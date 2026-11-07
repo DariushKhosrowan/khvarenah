@@ -1,13 +1,16 @@
 """Textual TUI — the modern, cross-platform console for the Cloudflare-worker
 VPN.  Walks the user 0 → 100:
 
-  1. Welcome
+  1. Welcome (Start / ⚡ Autopilot)
   2. Token (verify + token-permission guide)
   3. Account pick
   4. Worker name + UUID
   5. Deploy (via wrangler, with friendly error explanation + retry)
   6. Get your vless config (press `c` to copy to clipboard)
   7. Done + test guidance
+
+Autopilot: paste the token once and it runs 2→6 for you (picks an account,
+names the worker, deploys, and shows the vless link).
 
 Run:  python -m khvarenah.tui   (or: khvarenah)
 """
@@ -16,12 +19,13 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from pathlib import Path
 
 from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical, Container
 from textual.screen import Screen
 from textual.widgets import (Button, Input, Label, ListItem, ListView, Markdown,
                              ProgressBar, Static)
@@ -82,6 +86,7 @@ class State:
     worker_path = None
     host = ""
     prof = None
+    autopilot = False
 
 
 APP = State()
@@ -96,10 +101,17 @@ class WelcomeScreen(BackMixin):
             tr("welcome.body", steps=" → ".join(_steps())),
             id="welcome_md",
         )
-        yield Button(tr("welcome.start"), variant="primary", id="start")
+        yield Markdown(tr("welcome.autopilot.body"), id="autopilot_md")
+        yield Horizontal(
+            Button(tr("welcome.start"), variant="primary", id="start"),
+            Button(tr("welcome.autopilot"), variant="success", id="autopilot"),
+        )
 
     def on_button_pressed(self, event):
         if event.button.id == "start":
+            self.app.push_screen("token")
+        elif event.button.id == "autopilot":
+            APP.autopilot = True
             self.app.push_screen("token")
 
 
@@ -108,6 +120,8 @@ class TokenScreen(BackMixin):
 
     def compose(self) -> ComposeResult:
         yield Label(tr("step", n=2, total=len(STEPS), name=tr("token.title")), id="step")
+        if APP.autopilot:
+            yield Label(tr("autopilot.label"), id="ap_label")
         yield Markdown(create_token_instructions())
         yield Input(placeholder=tr("token.placeholder"), password=True, id="tok")
         yield Horizontal(
@@ -155,6 +169,8 @@ class AccountScreen(BackMixin):
 
     def compose(self) -> ComposeResult:
         yield Label(tr("step", n=3, total=len(STEPS), name=tr("account.title")), id="step")
+        if APP.autopilot:
+            yield Label(tr("autopilot.label"), id="ap_label")
         yield ListView(id="accs")
         yield Button(tr("account.continue"), variant="primary", id="go", disabled=True)
 
@@ -162,6 +178,16 @@ class AccountScreen(BackMixin):
         lv = self.query_one("#accs", ListView)
         for acc in APP.accounts:
             lv.append(ListItem(Label(Config.account_display(Config, acc))))
+        if APP.autopilot and APP.accounts:
+            # pick the first account automatically and continue
+            APP.account_id = APP.accounts[0]["id"]
+            lv.index = 0
+            self.query_one("#go", Button).disabled = False
+            self.app.call_after_refresh(self._auto_continue)
+
+    def _auto_continue(self):
+        if APP.account_id:
+            self.app.push_screen("worker")
 
     def on_list_view_highlighted(self, event):
         if event.item is None:
@@ -181,6 +207,8 @@ class WorkerScreen(BackMixin):
 
     def compose(self) -> ComposeResult:
         yield Label(tr("step", n=4, total=len(STEPS), name=tr("worker.title")), id="step")
+        if APP.autopilot:
+            yield Label(tr("autopilot.label"), id="ap_label")
         yield Markdown(tr("worker.body"))
         yield Horizontal(
             Input(placeholder=tr("worker.name_ph"), id="nm"),
@@ -198,6 +226,13 @@ class WorkerScreen(BackMixin):
         APP.worker_path = find_worker_js()
         self.query_one("#wp", Static).update(
             "worker bundle: " + str(APP.worker_path or "not found — put _worker.js next to the console"))
+        if APP.autopilot:
+            APP.name = safe_worker_name(self.query_one("#nm", Input).value)
+            APP.uuid = self.query_one("#uv", Input).value.strip() or generate_uuid()
+            self.app.call_after_refresh(self._auto_continue)
+
+    def _auto_continue(self):
+        self.app.push_screen("deploy")
 
     def on_button_pressed(self, event):
         if event.button.id == "go":
@@ -213,6 +248,8 @@ class DeployScreen(BackMixin):
 
     def compose(self) -> ComposeResult:
         yield Label(tr("step", n=5, total=len(STEPS), name=tr("deploy.title")), id="step")
+        if APP.autopilot:
+            yield Label(tr("autopilot.label"), id="ap_label")
         yield Markdown(tr("deploy.body"))
         yield ProgressBar(total=100, show_percentage=True, id="pb")
         yield Static("", id="msg")
@@ -227,6 +264,10 @@ class DeployScreen(BackMixin):
         elif event.button.id == "back":
             self.app.pop_screen()
 
+    def on_mount(self):
+        if APP.autopilot:
+            self._deploy()
+
     def _deploy(self):
         pb = self.query_one("#pb", ProgressBar)
         msg = self.query_one("#msg", Static)
@@ -236,6 +277,8 @@ class DeployScreen(BackMixin):
         if not wp:
             msg.update("[red]No worker bundle found. Place the edgetunnel _worker.js "
                        "next to the console or pass it via the CLI.[/]")
+            if APP.autopilot:
+                self.app.pop_screen()
             return
         ok_v, vmsg = validate_worker_js(wp)
         if not ok_v:
@@ -321,6 +364,12 @@ class ConfigScreen(BackMixin):
     def on_mount(self):
         APP.prof = VlessProfile(uuid=APP.uuid, address=APP.host, name=APP.name)
         self.query_one("#link", Static).update(APP.prof.share_link())
+        if APP.autopilot:
+            self.app.call_after_refresh(self._auto_continue)
+
+    def _auto_continue(self):
+        self._copy()
+        self.app.push_screen("done")
 
     def on_button_pressed(self, event):
         if event.button.id == "copy":
@@ -377,11 +426,22 @@ class CfConsoleApp(App):
     TITLE = tr("app.title")
     SUB_TITLE = tr("app.subtitle")
     CSS = """
-    Screen { padding: 1 2; }
+    Screen { padding: 1 2; background: $surface; }
     #step { color: $accent; text-style: bold; margin-bottom: 1; }
+    #ap_label {
+      color: $success; text-style: bold; margin-bottom: 1;
+      background: $boost; padding: 0 1; text-align: center;
+      border: round $success; border-title-align: center;
+    }
+    #logo { color: $secondary; text-style: bold; margin-bottom: 1; }
     ProgressBar { height: 1; margin: 1 0; }
     Static { margin: 1 0; }
     Button { margin: 1 2 0 0; }
+    Input { border: tall $primary; }
+    Input:focus { border: tall $accent; }
+    #welcome_md, #autopilot_md { margin: 0 0 1 0; }
+    Header { background: $primary; color: $text; }
+    Footer { background: $surface; }
     """
 
     SCREENS = {

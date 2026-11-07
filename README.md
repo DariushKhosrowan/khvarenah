@@ -67,10 +67,12 @@ both bundle Python, so nothing else is needed.
 curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash
 ```
 
-…or download the `.deb` and run:
+…or grab the `.deb` directly (note: the `./khvarenah_*.deb` glob only works if a matching file is in the current folder, so download it first):
 
 ```bash
-sudo apt install ./khvarenah_*.deb
+curl -fsSL -o /tmp/khvarenah.deb \
+  https://github.com/DariushKhosrowan/cf-console/releases/latest/download/khvarenah_0.1.0_amd64.deb
+sudo apt install /tmp/khvarenah.deb
 ```
 
 Then just run `khvarenah` from any terminal.

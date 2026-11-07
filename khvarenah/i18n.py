@@ -32,6 +32,15 @@ _TR = {
         "کلودفلر ورکر را مستقیماً از ترمینال شما می‌سازد و کنترل می‌کند.",
     ),
     "welcome.start": ("Start", "شروع"),
+    "welcome.autopilot": ("⚡ Autopilot", "⚡ خودکار"),
+    "welcome.autopilot.body": (
+        "**Autopilot** — paste your token once, then Khvarenah runs the whole "
+        "wizard for you: picks an account, names the worker, deploys it, and "
+        "shows your ready-to-copy vless link. No clicks needed.",
+        "**حالت خودکار** — توکن را یک‌بار بچسبانید، سپس خوَرنه کل ویزارد را "
+        "برای شما اجرا می‌کند.",
+    ),
+    "autopilot.label": ("Autopilot ON", "حالت خودکار روشن"),
     # ---- steps ----
     "step": ("Step {n}/{total} — {name}", "مرحله {n}/{total} — {name}"),
     # ---- token ----
