@@ -11,6 +11,11 @@
 <link rel="canonical" href="https://dariushkhosrowan.github.io/cf-console/">
 <link rel="sitemap" type="application/xml" href="sitemap.xml">
 
+<!-- hreflang: language alternates -->
+<link rel="alternate" hreflang="en" href="https://dariushkhosrowan.github.io/cf-console/">
+<link rel="alternate" hreflang="fa" href="https://dariushkhosrowan.github.io/cf-console/">
+<link rel="alternate" hreflang="x-default" href="https://dariushkhosrowan.github.io/cf-console/">
+
 <!-- Open Graph -->
 <meta property="og:type" content="website">
 <meta property="og:title" content="Khvarenah — Cloudflare Worker VLESS VPN Console">
@@ -19,11 +24,14 @@
 <meta property="og:site_name" content="Khvarenah">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="fa_IR">
+<meta property="og:image" content="https://dariushkhosrowan.github.io/cf-console/golden.png">
+<meta property="og:image:alt" content="Khvarenah golden Khosrowan emblem">
 
 <!-- Twitter -->
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Khvarenah — Cloudflare Worker VLESS VPN Console">
 <meta name="twitter:description" content="Free, open-source terminal console that deploys a Cloudflare Worker VLESS proxy from zero to 100.">
+<meta name="twitter:image" content="https://dariushkhosrowan.github.io/cf-console/golden.png">
 
 <!-- Schema.org structured data -->
 <script type="application/ld+json">
@@ -182,5 +190,46 @@ khvarenah scan    [--token T] [--name N] [--uuid U]</code></pre>
   </footer>
 
 </div>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is Khvarenah?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Khvarenah is a free, open-source terminal console (TUI + CLI) that walks you through creating and controlling a Cloudflare Worker VLESS VPN from zero to 100 — verify your API token, deploy the worker, and get a ready-to-copy vless:// configuration, all with friendly error explanations."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Khvarenah easy to install for non-programmers?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. On Linux you install a .deb with one command (or download it and run 'sudo apt install ./khvarenah_*.deb'). On Windows you download the .exe and double-click it. Both bundle Python, so no coding or pip is needed."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "What platforms does Khvarenah support?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Linux and Windows, with a native .deb and .exe respectively. The interactive TUI and headless CLI work identically on both."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Khvarenah free?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, it is free and open source under the MIT license. You only need your own Cloudflare account and an API token with Workers Scripts: Edit permission."
+      }
+    }
+  ]
+}
+</script>
+
 </body>
 </html>
