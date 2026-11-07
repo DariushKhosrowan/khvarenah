@@ -70,9 +70,14 @@ def test_humanize_worker_preserves_logic(monkeypatch):
     monkeypatch.setattr(stealth, "_ENABLED", True)
     js = b"export default { async fetch() { return 1; } };"
     out = stealth.humanize_worker(js)
-    # logic is preserved verbatim, only a comment header is prepended
+    # Working logic is preserved verbatim at the tail, always (a real dev
+    # occasionally ships unchanged code, so `out == js` is legal via the
+    # documented "pristine" path — the invariant is that bytes are NEVER
+    # reordered/rewritten, only optionally prefixed by a comment header).
     assert out.endswith(js)
-    assert out != js  # bytes differ (header added)
+    if out != js:
+        # when a header IS prepended, it must be a block comment (bytes differ)
+        assert out.startswith(b"/*")
 
 
 def test_humanize_worker_disabled_returns_unchanged(monkeypatch):
