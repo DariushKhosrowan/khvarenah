@@ -106,20 +106,37 @@ def list_vless(limit: int = 50) -> List[dict]:
 
 
 def last_vless(prefer_deployed: bool = True) -> Optional[dict]:
-    """Return the most recent saved vless profile record (newest first).
+    """Return the most recent usable saved vless profile (newest first).
 
     Prefers a base (non-clean-IP) deployment so tools like the Clean-IP
     scanner always have a real workers.dev host to probe.  Falls back to the
     newest record regardless of kind when no deployed base exists.
+
+    A record is only ``usable`` if it carries a non-empty host address — an
+    empty-address record (e.g. a wizard step that was saved before a real host
+    was known) can never be scanned, so it is skipped instead of being
+    returned as if it were a valid deployment.
     """
     history = list_vless(limit=200)
     if not history:
         return None
+
+    def _usable(rec: dict) -> bool:
+        return bool(rec.get("address"))
+
     if prefer_deployed:
         for rec in history:
-            if not rec.get("clean_ip"):
+            if not rec.get("clean_ip") and _usable(rec):
                 return rec
-    return history[0]
+        # no usable base deployment → newest usable record of any kind
+        for rec in history:
+            if _usable(rec):
+                return rec
+        return None
+    for rec in history:
+        if _usable(rec):
+            return rec
+    return None
 
 
 def clear_history() -> int:

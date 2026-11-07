@@ -71,6 +71,41 @@ class StoreTest(unittest.TestCase):
         store.clear_history()
         self.assertIsNone(store.last_vless())
 
+    def test_last_vless_skips_empty_address_records(self):
+        # A saved record with an empty host (e.g. wizard saved before the host
+        # was known) must never be chosen as the "deployed config" — it can't
+        # be scanned and would falsely trigger "No deployed config available".
+        store.remember_vless(_fake_profile(name="base-worker"))  # older, valid
+        # record an empty-address entry as the NEWEST base (non-clean) record
+        empty = VlessProfile(uuid="u-empty", address="", name="empty-saved")
+        store.remember_vless(empty)
+        rec = store.last_vless()
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec["address"])
+        self.assertEqual(rec["name"], "base-worker")
+
+        # even with prefer_deployed=False, an empty record is never returned
+        rec = store.last_vless(prefer_deployed=False)
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec["address"])
+
+        # only empty-address records exist -> None (restore shows the error)
+        store.clear_history()
+        store.remember_vless(VlessProfile(uuid="u1", address="", name="a"))
+        store.remember_vless(VlessProfile(uuid="u2", address="", name="b"))
+        self.assertIsNone(store.last_vless())
+        self.assertIsNone(store.last_vless(prefer_deployed=False))
+
+    def test_last_vless_clean_ip_prefers_older_base_over_newer_empty(self):
+        # newest is a clean-IP entry, but the only base has an empty address
+        # → must fall back to the newest *usable* record (the clean-IP one).
+        store.remember_vless(VlessProfile(uuid="u-base", address="", name="base"))
+        store.remember_vless(_fake_profile(name="clean-worker"), clean_ip=True)
+        rec = store.last_vless()
+        self.assertIsNotNone(rec)
+        self.assertTrue(rec["address"])
+        self.assertEqual(rec["name"], "clean-worker")
+
     def test_clear(self):
         store.save_token("X")
         store.remember_vless(_fake_profile())
