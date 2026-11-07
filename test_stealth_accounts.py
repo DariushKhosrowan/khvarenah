@@ -66,6 +66,33 @@ def test_stealth_disabled_does_not_sleep(monkeypatch):
     assert slept == []
 
 
+def test_humanize_worker_preserves_logic(monkeypatch):
+    monkeypatch.setattr(stealth, "_ENABLED", True)
+    js = b"export default { async fetch() { return 1; } };"
+    out = stealth.humanize_worker(js)
+    # logic is preserved verbatim, only a comment header is prepended
+    assert out.endswith(js)
+    assert out != js  # bytes differ (header added)
+
+
+def test_humanize_worker_disabled_returns_unchanged(monkeypatch):
+    monkeypatch.setattr(stealth, "_ENABLED", False)
+    js = b"export default {}"
+    assert stealth.humanize_worker(js) == js
+
+
+def test_humanize_worker_variation():
+    # bump the RNG seed range: with different draws headers differ
+    import random as _r
+    rng = _r.Random(12345)
+    headers = set()
+    for _ in range(50):
+        h = stealth._header_comment()
+        headers.add(h)
+    # comments vary (more than one distinct header)
+    assert len(headers) >= 2
+
+
 # ---------------------------------------------------------------------------
 # active-account switching
 # ---------------------------------------------------------------------------

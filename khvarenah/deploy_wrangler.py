@@ -94,10 +94,12 @@ def deploy_wrangler(token: str, account_id: str, name: str, worker_path: str,
     wbin = wrangler_bin()
     with tempfile.TemporaryDirectory(prefix="khvarenah-") as td:
         td_ = Path(td)
-        # copy worker to a stable name
+        # copy worker to a stable name, humanizing its bytes first so successive
+        # deployments don't share an identical byte fingerprint (anti-bot)
         src = Path(worker_path)
         dst = td_ / "worker.js"
-        dst.write_bytes(src.read_bytes())
+        from .stealth import humanize_worker
+        dst.write_bytes(humanize_worker(src.read_bytes()))
         # minimal toml
         (td_ / "wrangler.toml").write_text(
             f'name = "{name}"\n'
