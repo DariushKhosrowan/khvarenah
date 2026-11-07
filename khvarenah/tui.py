@@ -87,6 +87,7 @@ class State:
     host = ""
     prof = None
     autopilot = False
+    last_error = ""
 
 
 APP = State()
@@ -244,7 +245,10 @@ class WorkerScreen(BackMixin):
 
 
 class DeployScreen(BackMixin):
-    BINDINGS = [Binding("escape", "back", "Back")]
+    BINDINGS = [
+        Binding("c", "copy_error", "Copy error"),
+        Binding("escape", "back", "Back"),
+    ]
 
     def compose(self) -> ComposeResult:
         yield Label(tr("step", n=5, total=len(STEPS), name=tr("deploy.title")), id="step")
@@ -292,8 +296,9 @@ class DeployScreen(BackMixin):
         def ok(res):
             if not res.ok:
                 pb.update(progress=0)
-                msg.update(f"[red]✗ {res.message}[/]\n[yellow]Fix: see above; press "
-                           "Tab to retry.[/]\n" + (res.stderr or "")[-400:])
+                APP.last_error = (res.message + "\n" + (res.stderr or "")).strip()
+                msg.update(f"[red]✗ {res.message}[/]\n[yellow]Press [b]c[/] to copy the error, Tab to retry.[/]\n"
+                           + "```text\n" + APP.last_error[-400:] + "\n```")
                 return
             APP.host = res.host
             pb.update(progress=100)
@@ -301,6 +306,23 @@ class DeployScreen(BackMixin):
             self.app.push_screen("config")
 
         run_in_thread(work, ok, lambda m: msg.update(m))
+
+    def action_copy_error(self):
+        err = APP.last_error
+        if not err:
+            self.notify("No error to copy yet", severity="warning")
+            return
+        if pyperclip is not None:
+            try:
+                pyperclip.copy(err)
+                self.notify("Error copied to clipboard", severity="information")
+                return
+            except Exception:  # noqa: BLE001
+                pass
+        # fallback: show a selectable snippet the user can copy manually
+        self.query_one("#msg", Static).update(
+            f"[yellow]Copy the error below (select with mouse):[/]\n"
+            + "```text\n" + err + "\n```")
 
 
 class CleanIPScreen(BackMixin):
