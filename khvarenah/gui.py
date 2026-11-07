@@ -123,6 +123,24 @@ QLabel#page_sub {
 QLabel#h { color: #d9c58a; font-size: 13px; font-weight: 600; }
 QLabel#body { color: #b7a984; font-size: 13px; }
 
+/* checkboxes (e.g. "Auto-update from GitHub") — must be styled explicitly,
+   otherwise they inherit the system palette and render dark-on-dark on the
+   dark theme. */
+QCheckBox {
+    color: #b7a984; font-size: 13px; spacing: 8px;
+    background: transparent;
+}
+QCheckBox:hover { color: #e8c266; }
+QCheckBox::indicator {
+    width: 16px; height: 16px;
+    border: 1px solid #3a3222; border-radius: 4px;
+    background: #17140e;
+}
+QCheckBox::indicator:hover { border-color: #554827; }
+QCheckBox::indicator:checked {
+    background: #d9b45c; border-color: #d9b45c;
+}
+
 QLineEdit {
     background: #17140e; border: 1px solid #3a3222; border-radius: 8px;
     padding: 9px 11px; color: #f0e4c8; font-size: 13px;
