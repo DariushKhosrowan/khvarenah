@@ -473,22 +473,56 @@ class CfConsoleApp(App):
     TITLE = tr("app.title")
     SUB_TITLE = tr("app.subtitle")
     CSS = """
-    Screen { padding: 1 2; background: $surface; }
-    #step { color: $accent; text-style: bold; margin-bottom: 1; }
-    #ap_label {
-      color: $success; text-style: bold; margin-bottom: 1;
-      background: $boost; padding: 0 1; text-align: center;
-      border: round $success; border-title-align: center;
+    Screen { padding: 1 2; background: #0f0d09; }
+    #step {
+      color: #d9b45c; text-style: bold; margin-bottom: 1;
     }
-    #logo { color: $secondary; text-style: bold; margin-bottom: 1; }
-    ProgressBar { height: 1; margin: 1 0; }
-    Static { margin: 1 0; }
-    Button { margin: 1 2 0 0; }
-    Input { border: tall $primary; }
-    Input:focus { border: tall $accent; }
+    #ap_label {
+      color: #17130b; text-style: bold; margin-bottom: 1;
+      background: #e8c266; padding: 0 1; text-align: center;
+      border: round #d9b45c; border-title-align: center;
+    }
+    #logo { color: #e8c266; text-style: bold; margin-bottom: 1; }
     #welcome_md, #autopilot_md { margin: 0 0 1 0; }
-    Header { background: $primary; color: $text; }
-    Footer { background: $surface; }
+    Markdown { color: #b7a984; }
+    MarkdownH1 { color: #f1e5c6; text-style: bold; }
+    MarkdownH2 { color: #f0d27e; text-style: bold; }
+    MarkdownBullet { color: #d9b45c; }
+
+    Static { margin: 1 0; }
+    Button {
+      margin: 1 2 0 0;
+      background: #2a2317; color: #d9c58a;
+      border: tall #3a3222;
+      padding: 0 3;
+    }
+    Button:hover { background: #362d1d; color: #e8c266; border: tall #6b5a2e; }
+    Button.primary {
+      background: #d9b45c; color: #17130b;
+      border: tall #d9b45c;
+    }
+    Button.primary:hover { background: #e8c266; border: tall #e8c266; }
+    Button.success { background: #7fbf8a; color: #0f0d09; border: tall #7fbf8a; }
+
+    Input {
+      background: #15120c; color: #f1e5c6;
+      border: tall #3a3222; padding: 0 2;
+    }
+    Input:focus { border: tall #d9b45c; }
+
+    ListView { background: #15120c; border: tall #3a3222; padding: 1; }
+    ListItem { padding: 0 2; }
+    ListItem:hover { background: #241f15; color: #e8c266; }
+    ListItem.--highlighted { background: #312a1a; color: #f2d78a; }
+
+    ProgressBar { height: 1; margin: 1 0; }
+    ProgressBar > .bar { color: #d9b45c; background: #221d13; }
+    .bar--complete { color: #e8c266; }
+
+    Header { background: #1a1711; color: #d9c58a; }
+    Header .header-title { color: #f0d27e; text-style: bold; }
+    Footer { background: #1a1711; color: #b7a984; }
+    Footer .footer-key { color: #e8c266; }
     """
 
     SCREENS = {
