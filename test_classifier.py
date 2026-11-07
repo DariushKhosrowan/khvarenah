@@ -9,9 +9,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from vpn_console.deploy_wrangler import _classify  # noqa: E402
-from vpn_console.worker_bundle import safe_worker_name  # noqa: E402
-from vpn_console.vless import VlessProfile  # noqa: E402
+from khvarenah.deploy_wrangler import _classify  # noqa: E402
+from khvarenah.worker_bundle import safe_worker_name  # noqa: E402
+from khvarenah.vless import VlessProfile  # noqa: E402
 
 
 class ClassifyTests(unittest.TestCase):

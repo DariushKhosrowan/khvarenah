@@ -9,7 +9,7 @@ VPN.  Walks the user 0 → 100:
   6. Get your vless config (press `c` to copy to clipboard)
   7. Done + test guidance
 
-Run:  python -m vpn_console.tui   (or: run.py)
+Run:  python -m khvarenah.tui   (or: run.py)
 """
 
 from __future__ import annotations
@@ -27,15 +27,16 @@ from textual.widgets import (Button, Input, Label, ListItem, ListView, Markdown,
                              ProgressBar, Static)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from vpn_console.cf_api import Config, CFError  # noqa: E402
-from vpn_console.worker_bundle import (find_worker_js, safe_worker_name,  # noqa: E402
+from khvarenah.cf_api import Config, CFError  # noqa: E402
+from khvarenah.worker_bundle import (find_worker_js, safe_worker_name,  # noqa: E402
                                        generate_uuid, validate_worker_js)
-from vpn_console.vless import VlessProfile  # noqa: E402
-from vpn_console.deploy_wrangler import (deploy_wrangler,  # noqa: E402
+from khvarenah.vless import VlessProfile  # noqa: E402
+from khvarenah.deploy_wrangler import (deploy_wrangler,  # noqa: E402
                                          create_token_instructions,
                                          WranglerMissingError)
-from vpn_console.cleanip import find_clean_ips, rewrite_vless_with_endpoint  # noqa: E402
-from vpn_console._nav import BackMixin  # noqa: E402
+from khvarenah.cleanip import find_clean_ips, rewrite_vless_with_endpoint  # noqa: E402
+from khvarenah._nav import BackMixin  # noqa: E402
+from khvarenah.banner import rich_banner  # noqa: E402
 
 try:
     import pyperclip
@@ -79,10 +80,11 @@ class WelcomeScreen(BackMixin):
     BINDINGS = [Binding("enter", "start", "Start")]
 
     def compose(self) -> ComposeResult:
+        yield Static(rich_banner(54), id="logo")
         yield Markdown(
-            "# Cloudflare-Worker VPN Console\n\n"
-            "A **0 → 100** wizard that creates and controls a Cloudflare-Worker "
-            "VLESS proxy right from your terminal.\n\n"
+            "# Khvarenah (خوَرنه)\n\n"
+            "**The ancient Persian royal glory.** A **0 → 100** wizard that creates "
+            "and controls a Cloudflare-Worker VLESS proxy right from your terminal.\n\n"
             "**What you'll get**\n"
             "- a deployed `worker` reachable at `https://<name>.<subdomain>.workers.dev`\n"
             "- a ready-to-use `vless://…` config copied to your clipboard\n"

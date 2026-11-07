@@ -18,11 +18,11 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from vpn_console.cf_api import Config, CFError  # noqa: E402
-from vpn_console import worker_bundle as wb  # noqa: E402
-from vpn_console.vless import VlessProfile  # noqa: E402
-from vpn_console.deploy_wrangler import deploy_wrangler  # noqa: E402
-from vpn_console.cleanip import (find_clean_ips,  # noqa: E402
+from khvarenah.cf_api import Config, CFError  # noqa: E402
+from khvarenah import worker_bundle as wb  # noqa: E402
+from khvarenah.vless import VlessProfile  # noqa: E402
+from khvarenah.deploy_wrangler import deploy_wrangler  # noqa: E402
+from khvarenah.cleanip import (find_clean_ips,  # noqa: E402
                                  rewrite_vless_with_endpoint)
 
 VERSION = "0.1.0"
@@ -205,8 +205,8 @@ def cmd_scan(a) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="cf-console",
-                                description="Cloudflare-worker VPN console (headless)")
+    p = argparse.ArgumentParser(prog="khvarenah",
+                                description="Khvarenah — Cloudflare-worker VLESS VPN console (headless)")
     p.add_argument("--version", action="store_true", help="show version and exit")
     sub = p.add_subparsers(dest="cmd")
     for name, help_ in [("check", "verify token + worker bundle"),

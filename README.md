@@ -1,77 +1,188 @@
-# cf-console
+<div align="center">
 
-A modern, cross-platform (Linux + Windows) terminal console that creates and
-controls a **Cloudflare-Worker VLESS proxy** from zero to 100 — all in one place:
+# ✦ Khvarenah (خوَرنه) · **Khosrowan**
 
-- **Interactive TUI wizard** (`textual`-based): welcome → token → account →
-  worker name/UUID → deploy → get your `vless://` config → copy to clipboard
-- **Headless CLI** for scripting/automation
-- **Friendly error understanding**: every Cloudflare API and wrangler error is
-  classified into a plain-language problem + a suggested fix
-- **Clean-IP finder** (SenPaiScanner integration) for censored regions
+**The ancient Persian royal glory — a Cloudflare-Worker VLESS VPN console in your terminal.**
 
-## What it produces
+Create and control a Cloudflare-Worker VLESS VPN — from zero to 100, entirely from your terminal. Cross-platform (Linux · Windows) · Interactive TUI wizard + headless CLI · Friendly error explanations.
 
-A deployed worker reachable at `https://<name>.<subdomain>.workers.dev` plus a
-ready-to-paste `vless://...` share link (and an xray client JSON skeleton) for
-v2rayN / v2rayNG / NekoBox / sing-box, etc.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-2ea44f)](https://github.com/DariushKhosrowan/cf-console)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub Pages](https://img.shields.io/badge/Docs-Site-2ea44f)](https://dariushkhosrowan.github.io/cf-console/)
+[![Khosrowan](https://img.shields.io/badge/Khosrowan-khosrowan.ir-2ea44f)](https://khosrowan.ir)
+[![Telegram](https://img.shields.io/badge/Telegram-%40Khosrowan_ir-26A5E4?logo=telegram&logoColor=white)](https://t.me/Khosrowan_ir)
 
-## Requirements
+**A modern terminal console that walks you through deploying a Cloudflare Workers proxy (VLESS over WebSocket) — verify your token, pick an account, deploy the worker, and get a ready-to-copy `vless://` config. If anything goes wrong, it tells you *what* the problem is and *how to fix it* — not a raw stack trace.**
 
-- Python 3.10+ (Linux or Windows)
-- Node.js + `wrangler` CLI for deploying (install: `npm i -g wrangler`)
-- The edgetunnel worker bundle (`_worker.js`) — auto-detected from this
-  directory or `~/Projects/cf-worker-proxy/_worker.js`. Pass `--worker <path>`
-  to point elsewhere.
+**A [Khosrowan](https://khosrowan.ir) tool · [@Khosrowan_ir](https://t.me/Khosrowan_ir) on Telegram**
 
-## Run
+</div>
 
-Linux:
+---
+
+## ✦ What is Khvarenah?
+
+**خوَرنه (Khvarenah)** is the Avestan term for *divine royal glory / radiance* — a sacred inner fire that lets one rise above every barrier. That is exactly what this tool does: it gives you the glory to reach over censorship walls. The app greets you with the golden Khosrowan emblem, rendered as true-color terminal art.
+
+## ✨ Why Khvarenah?
+
+| Pain point | What Khvarenah does |
+|---|---|
+| Setup is a maze of dashboards & APIs | A **0 → 100 wizard**: token → account → deploy → config, all in one place |
+| Raw JSON/stack-trace errors | **Friendly error understanding**: every Cloudflare API & wrangler error → *problem + fix* |
+| No CLI on Linux *and* Windows | Works identically on both, with native launchers |
+| Need to paste a config into a client | Generates the `vless://` share link + xray client JSON, copies to clipboard |
+| Workers.dev DNS-blocked in censored regions | Built-in **clean-IP finder** (SenPaiScanner) + **VPN-free local test** harness |
+
+---
+
+## 🚀 Quick install
+
+> Requires **Python 3.10+**. Installing adds the `khvarenah` command to your PATH.
 
 ```bash
-./cf-console.sh            # interactive TUI
-./cf-console.sh cli --help # headless CLI
+git clone https://github.com/DariushKhosrowan/cf-console.git
+cd cf-console
+pip install -e .          # or: ./install.sh (creates a venv and installs)
 ```
 
-Windows:
+Then run it from anywhere:
+
+```bash
+khvarenah                  # launch the interactive TUI wizard (golden emblem welcome)
+khvarenah cli --help       # headless CLI
+```
+
+### Windows
 
 ```bat
-run.bat                    @ interactive TUI
-run.bat cli --help         @ headless CLI
+git clone https://github.com/DariushKhosrowan/cf-console.git
+cd cf-console
+pip install -e .
+khvarenah
+khvarenah cli --help
 ```
 
-First run creates `.venv` and installs dependencies automatically.
+### Prerequisites for deploying
 
-## CLI reference
+- **Python 3.10+** — for the console itself.
+- **Node.js + [wrangler](https://developers.cloudflare.com/workers/wrangler/)** — the console shells out to wrangler to deploy (it bundles the worker for you). Install once with:
+  ```bash
+  npm install -g wrangler
+  ```
+- **A Cloudflare API token** with `Workers Scripts: Edit` and `Account Settings: Read` permissions ([create one here](https://dash.cloudflare.com/profile/api-tokens)). Save it once to `~/.cf-console/token` — or pass `--token` each run.
 
-```
-cf-console check   [--token T] [--worker W]     # verify token + worker bundle
-cf-console deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
-cf-console config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
-                   [--security tls|none] [--path /]
-cf-console status  [--token T] [--account A]     # list deployed workers
-cf-console scan    [--token T] [--name N] [--uuid U] ...  # find clean IPs
-```
+> 💡 The console auto-detects the [edgetunnel](https://github.com/cmliu/edgetunnel) worker bundle from this repo or `~/Projects/cf-worker-proxy/_worker.js`. Point elsewhere with `--worker <path>`.
 
-The token can be passed with `--token`, or saved once to `~/.cf-console/token`.
+---
 
-## Local (VPN-free) testing
-
-After deploying, test the *config* without needing the deployed host's DNS
-(a workers.dev host is DNS-poisoned in some regions). Use the local harness in
-`~/Projects/cf-worker-proxy/localtest/`:
+## 🖥️ The interactive wizard (TUI)
 
 ```
-start-local-worker.sh   # wrangler dev on LAN
-start-xray.sh           # xray client against the local worker
-curl --socks5-hostname 127.0.0.1:10808 https://www.google.com
+Welcome → Token → Account → Worker name/UUID → Deploy → Your vless config → Done
 ```
 
-> A passing local test proves the config/protocol is correct. It does NOT prove
-> the deployed endpoint is reachable from your network — those are separate.
+1. **Welcome** — the golden Khosrowan emblem + overview of the steps.
+2. **Token** — paste your Cloudflare API token; it's verified live, with a permission guide if anything's off.
+3. **Account** — pick the account the worker should live on.
+4. **Worker** — name your worker + generate (or paste) a UUID.
+5. **Deploy** — wrangler uploads the worker and sets `UUID`. Failures are explained with a fix.
+6. **Config** — your `vless://` share link appears; press `c` to copy it to your clipboard.
+7. **Done** — deployment details + local-test guidance.
 
-## Error handling
+---
 
-All Cloudflare HTTP errors (400/401/403/404/409/413/429/5xx and CF numeric
-codes) and wrangler CLI failures are translated into human-readable
-"problem + fix" guidance instead of raw stack traces.
+## 💻 Headless CLI
+
+```
+khvarenah cli check   [--token T] [--worker W]                 # verify token + worker bundle
+khvarenah cli deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
+khvarenah cli config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
+                      [--security tls|none] [--path /]
+khvarenah cli status  [--token T] [--account A]                 # list deployed workers
+khvarenah cli scan    [--token T] [--name N] [--uuid U] ...      # find clean IPs
+khvarenah cli --version
+```
+
+**Examples**
+
+```bash
+# Verify your token and the local worker bundle
+khvarenah cli check --token $CF_TOKEN
+
+# Deploy and get a vless link
+khvarenah cli deploy --token $CF_TOKEN --name my-vpn --uuid <your-uuid>
+
+# Generate a config (e.g. for a local, no-TLS test) and save client-xray.json
+khvarenah cli config --token $CF_TOKEN --name my-vpn --uuid <uuid> \
+    --address 192.168.1.50 --port 8787 --security none
+
+# Find clean Cloudflare IPs for your deployed worker
+khvarenah cli scan --token $CF_TOKEN --name my-vpn --uuid <uuid>
+```
+
+Exit codes: `0` OK · `1` user/validation error · `2` Cloudflare error (message + fix printed).
+
+---
+
+## 🧠 Error understanding
+
+Every Cloudflare API HTTP error (400/401/403/404/409/413/429/5xx) and CF numeric code, plus wrangler CLI failures, is translated into **plain-language "problem + fix" guidance** instead of a raw traceback — e.g. a `1101` runtime exception is correctly explained as a worker-code issue, *not* a flawed problem.
+
+---
+
+## 🧪 Testing without a VPN (censored regions)
+
+A `workers.dev` host is often DNS-blocked locally. Khvarenah supports a **VPN-free local harness** (see `~/Projects/cf-worker-proxy/localtest/`):
+
+```bash
+start-local-worker.sh   # wrangler dev on your LAN
+start-xray.sh           # xray client pointing at the local worker
+curl --socks5-hostname 127.0.0.1:10808 https://www.google.com   # → 200
+```
+
+> A passing *local* test proves the protocol/config is correct — it does **not** prove the deployed endpoint is reachable from your network. Those are separate checks.
+
+---
+
+## 🗂️ Project structure
+
+```
+cf-console/
+├── pyproject.toml         # packaging + console_scripts (khvarenah)
+├── cf-console.sh          # legacy Linux/macOS launcher
+├── run.bat                # legacy Windows launcher
+├── run.py                 # legacy entry point (TUI default, `cli` subcommand)
+├── test_classifier.py     # unit tests (error classifier, config gen)
+└── khvarenah/
+    ├── assets/golden.png  # golden logo (terminal banner source)
+    ├── banner.py          # renders the golden emblem as ANSI terminal art
+    ├── cli.py             # headless CLI
+    ├── tui.py             # Textual TUI wizard (welcome shows the emblem)
+    ├── cf_api.py          # Cloudflare Workers API client + error classification
+    ├── deploy_wrangler.py # wrangler deploy + error classification
+    ├── vless.py           # vless share-link / client config generation
+    ├── cleanip.py         # SenPaiScanner clean-IP finding
+    └── worker_bundle.py   # worker discovery + validation
+```
+
+---
+
+## 🧪 Development
+
+```bash
+.venv/bin/python test_classifier.py -v   # run the test suite
+```
+
+---
+
+## 🖊️ License
+
+MIT — free to use, modify, and share. See [LICENSE](LICENSE).
+
+---
+
+**A [Khosrowan](https://khosrowan.ir) tool.** Join us on Telegram: [@Khosrowan_ir](https://t.me/Khosrowan_ir).
+
+**Questions?** Open an [issue](https://github.com/DariushKhosrowan/cf-console/issues) — and if the error you hit isn't explained well, tell us; we want Khvarenah to understand it.

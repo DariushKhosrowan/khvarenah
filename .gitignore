@@ -1,7 +1,8 @@
-.venv/
 __pycache__/
-*.pyc
-client-xray.json
-clean-ips.txt
-.cf-console/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+build/
 SenPaiScannerResult-*.txt
+client-*.json

@@ -14,8 +14,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from vpn_console.tui import main as tui_main  # noqa: E402
-from vpn_console.cli import main as cli_main    # noqa: E402
+from khvarenah.tui import main as tui_main  # noqa: E402
+from khvarenah.cli import main as cli_main    # noqa: E402
 
 
 def main() -> int:
