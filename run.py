@@ -4,8 +4,8 @@
 Examples:
     python run.py                 # launch the 0→100 TUI
     python run.py cli check --token $CF_TOKEN
-    python run.py cli deploy --token $CF_TOKEN --name my-vpn
-    python run.py cli config --token $CF_TOKEN --name my-vpn --uuid ...
+    python run.py cli deploy --token $CF_TOKEN --name khosrowan
+    python run.py cli config --token $CF_TOKEN --name khosrowan --uuid ...
 """
 
 import sys

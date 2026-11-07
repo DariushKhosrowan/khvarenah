@@ -144,14 +144,28 @@ Welcome → Token → Account → Worker name/UUID → Deploy → Your vless con
 ## 💻 Headless CLI
 
 ```
-khvarenah cli check   [--token T] [--worker W]                 # verify token + worker bundle
-khvarenah cli deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
-khvarenah cli config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
-                      [--security tls|none] [--path /]
-khvarenah cli status  [--token T] [--account A]                 # list deployed workers
-khvarenah cli scan    [--token T] [--name N] [--uuid U] ...      # find clean IPs
+khvarenah cli check    [--token T] [--worker W]                 # verify token + worker bundle
+khvarenah cli deploy   [--token T] [--name N] [--uuid U] [--worker W] [--account A]
+khvarenah cli config   [--token T] [--name N] [--uuid U] [--address H] [--port P]
+                       [--security tls|none] [--path /]
+khvarenah cli status   [--token T] [--account A]                 # list deployed workers
+khvarenah cli scan     [--token T] [--name N] [--uuid U] ...      # find clean IPs
+khvarenah cli clean    [--token T] [--name N] [--uuid U] [--top N] [--all]
+                       # clean IP → working vless link (interactive: choose more IPs)
+khvarenah cli autopilot [--token T] [--name N] [--account A] [--top N] [--all]
+                       # deploy → find clean IP → working link (fully automatic)
+khvarenah cli history  [--show-tokens]                          # saved vless configs + tokens
+khvarenah cli accounts                                          # saved Cloudflare accounts
+khvarenah cli upgrade                                            # self-update from GitHub
 khvarenah cli --version
 ```
+
+All commands keep a **memory** under `~/.khvarenah/` — every generated vless
+config is recorded (`history.json`), every API token is stored (`tokens.json`,
+0600), and every Cloudflare account is remembered (`accounts.json`) so you never
+re-type an account ID, a token, or a past config. The worker name in autopilot
+mode is derived automatically from your **Cloudflare account name** (never a
+`vpn` label) — you don't have to think about it.
 
 **Examples**
 
@@ -159,15 +173,25 @@ khvarenah cli --version
 # Verify your token and the local worker bundle
 khvarenah cli check --token $CF_TOKEN
 
-# Deploy and get a vless link
-khvarenah cli deploy --token $CF_TOKEN --name my-vpn --uuid <your-uuid>
+# Deploy and get a vless link (worker name defaults to the account name)
+khvarenah cli deploy --token $CF_TOKEN
 
 # Generate a config (e.g. for a local, no-TLS test) and save client-xray.json
-khvarenah cli config --token $CF_TOKEN --name my-vpn --uuid <uuid> \
+khvarenah cli config --token $CF_TOKEN --name khosrowan --uuid <uuid> \
     --address 192.168.1.50 --port 8787 --security none
 
 # Find clean Cloudflare IPs for your deployed worker
-khvarenah cli scan --token $CF_TOKEN --name my-vpn --uuid <uuid>
+khvarenah cli scan --token $CF_TOKEN --name khosrowan --uuid <uuid>
+
+# Full pipeline: deploy, then find the best clean IPs and print working links
+khvarenah cli autopilot --token $CF_TOKEN --top 10
+
+# Generate configs for EVERY clean IP found (not just the top N)
+khvarenah cli clean --token $CF_TOKEN --name khosrowan --uuid <uuid> --all
+
+# See what you've generated before (and reveal tokens with --show-tokens)
+khvarenah cli history
+khvarenah cli accounts
 ```
 
 Exit codes: `0` OK · `1` user/validation error · `2` Cloudflare error (message + fix printed).
@@ -212,8 +236,15 @@ khvarenah/
     ├── deploy_wrangler.py # wrangler deploy + error classification
     ├── vless.py           # vless share-link / client config generation
     ├── cleanip.py         # SenPaiScanner clean-IP finding
-    └── worker_bundle.py   # worker discovery + validation
-```
+    ├── store.py           # persistent memory: history / tokens / accounts
+    └── worker_bundle.py   # worker discovery + validation (account-name defaults)
+
+# Memory lives in ~/.khvarenah/
+~/.khvarenah/
+    ├── history.json        # every generated vless config (newest first)
+    ├── tokens.json         # saved API tokens (0600)
+    ├── accounts.json       # remembered Cloudflare accounts
+    └── bin/senpaiscanner  # auto-installed SenPaiScanner CLI
 
 ---
 

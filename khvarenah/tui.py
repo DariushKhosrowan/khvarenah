@@ -34,7 +34,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from khvarenah.i18n import tr, set_lang  # noqa: E402
 from khvarenah.cf_api import Config, CFError  # noqa: E402
 from khvarenah.worker_bundle import (find_worker_js, safe_worker_name,  # noqa: E402
-                                       generate_uuid, validate_worker_js)
+                                       generate_uuid, validate_worker_js,
+                                       default_worker_name, worker_name_from_account)
 from khvarenah.vless import VlessProfile  # noqa: E402
 from khvarenah.deploy_wrangler import (deploy_wrangler,  # noqa: E402
                                          create_token_instructions,
@@ -184,6 +185,8 @@ class AccountScreen(BackMixin):
         if APP.autopilot and APP.accounts:
             # pick the first account automatically and continue
             APP.account_id = APP.accounts[0]["id"]
+            if not APP.name:
+                APP.name = worker_name_from_account(APP.accounts[0])
             lv.index = 0
             self.query_one("#go", Button).disabled = False
             self.app.call_after_refresh(self._auto_continue)
@@ -224,7 +227,7 @@ class WorkerScreen(BackMixin):
         )
 
     def on_mount(self):
-        self.query_one("#nm", Input).value = APP.name or "vpn-edge"
+        self.query_one("#nm", Input).value = APP.name or default_worker_name()
         self.query_one("#uv", Input).value = APP.uuid or generate_uuid()
         APP.worker_path = find_worker_js()
         self.query_one("#wp", Static).update(

@@ -8,7 +8,7 @@ Examples::
     khvarenah                  # 0→100 desktop GUI (default)
     khvarenah tui              # terminal TUI wizard
     khvarenah cli check
-    khvarenah cli deploy --token $CF_TOKEN --name my-vpn
+    khvarenah cli deploy --token $CF_TOKEN --name khosrowan
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ def entrypoint() -> int:
     # Top-level CLI subcommands (so `khvarenah upgrade`, `khvarenah scan`, …)
     # work directly, not just behind the `cli` prefix.
     _CMDS = {"check", "deploy", "config", "status", "scan",
-             "clean", "autopilot", "upgrade", "history"}
+             "clean", "autopilot", "upgrade", "history", "accounts"}
     if args and args[0] in _CMDS:
         return cli_main(args)
     # Top-level --version / -h route to the CLI parser without launching a UI

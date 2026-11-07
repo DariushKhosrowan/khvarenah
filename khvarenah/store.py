@@ -29,6 +29,7 @@ MEM_DIR = Path.home() / ".khvarenah"
 HISTORY_FILE = MEM_DIR / "history.json"
 TOKENS_FILE = MEM_DIR / "tokens.json"
 CONFIG_FILE = MEM_DIR / "config.json"
+ACCOUNTS_FILE = MEM_DIR / "accounts.json"
 
 _lock = threading.Lock()
 
@@ -158,6 +159,44 @@ def clear_tokens() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Account registry (so the user never re-types account IDs / names)
+# ---------------------------------------------------------------------------
+
+def remember_account(account_id: str, name: str = "", subdomain: str = "") -> None:
+    """Persist a Cloudflare account so future runs can reuse it."""
+    if not account_id:
+        return
+    with _lock:
+        accs = _read_json(ACCOUNTS_FILE, {})
+        acc = accs.get(account_id, {})
+        if name:
+            acc["name"] = name
+        if subdomain:
+            acc["subdomain"] = subdomain
+        accs[account_id] = acc
+        _write_json(ACCOUNTS_FILE, accs, private=True)
+
+
+def list_accounts() -> dict:
+    accs = _read_json(ACCOUNTS_FILE, {})
+    return accs if isinstance(accs, dict) else {}
+
+
+def get_account(account_id: str) -> dict:
+    return list_accounts().get(account_id, {})
+
+
+def account_label(account_id: str) -> str:
+    acc = get_account(account_id)
+    return acc.get("name") or account_id
+
+
+def clear_accounts() -> None:
+    with _lock:
+        _write_json(ACCOUNTS_FILE, {}, private=True)
+
+
+# ---------------------------------------------------------------------------
 # Convenience — combine memory + config
 # ---------------------------------------------------------------------------
 
@@ -165,6 +204,7 @@ def memory_summary() -> str:
     """A short human-readable summary for the UI (no tokens)."""
     hv = list_vless()
     tok = stored_tokens()
+    accs = list_accounts()
     lines = []
     if hv:
         lines.append(f"🧠 {len(hv)} saved vless config(s)")
@@ -174,6 +214,9 @@ def memory_summary() -> str:
                          f"{r.get('ts')}")
     if tok:
         lines.append(f"🔑 {len(tok)} saved token(s)")
+    if accs:
+        names = [a.get("name") or aid for aid, a in list(accs.items())[:3]]
+        lines.append(f"☁️ {len(accs)} saved account(s): {', '.join(names)}")
     if not lines:
         lines.append("No saved configs yet.")
     return "\n".join(lines)

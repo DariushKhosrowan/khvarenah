@@ -34,6 +34,7 @@ from khvarenah.i18n import tr, set_lang
 from khvarenah.cf_api import Config, CFError
 from khvarenah.worker_bundle import (
     find_worker_js, safe_worker_name, generate_uuid, validate_worker_js,
+    default_worker_name, worker_name_from_account,
 )
 from khvarenah.vless import VlessProfile
 from khvarenah.deploy_wrangler import (
@@ -538,6 +539,8 @@ class AccountPage(QWidget):
             STATE.account_id = STATE.accounts[0]["id"]
             self.next_btn.setEnabled(True)
             if STATE.autopilot:
+                if not STATE.name and STATE.accounts:
+                    STATE.name = worker_name_from_account(STATE.accounts[0])
                 self.win.goto("worker")
 
     def _selected(self, row: int):
@@ -571,7 +574,7 @@ class WorkerPage(QWidget):
         name_lbl = QLabel("Worker name")
         name_lbl.setObjectName("h")
         self.name_edit = QLineEdit()
-        self.name_edit.setPlaceholderText("my-vpn")
+        self.name_edit.setPlaceholderText("worker name (e.g. khosrowan)")
         namecol.addWidget(name_lbl)
         namecol.addWidget(self.name_edit)
         uuidcol = QVBoxLayout()
@@ -613,7 +616,7 @@ class WorkerPage(QWidget):
         lo.addStretch(1)
 
     def on_enter(self):
-        self.name_edit.setText(STATE.name or "vpn-edge")
+        self.name_edit.setText(STATE.name or default_worker_name())
         if not STATE.uuid:
             STATE.uuid = generate_uuid()
         self.uuid_edit.setText(STATE.uuid)
@@ -629,7 +632,7 @@ class WorkerPage(QWidget):
             self.msg.setText("No worker bundle found. Put the edgetunnel "
                              "_worker.js beside the app before deploying.")
         if STATE.autopilot:
-            self.name_edit.setText(safe_worker_name("vpn-edge"))
+            self.name_edit.setText(default_worker_name())
             STATE.name = safe_worker_name(self.name_edit.text())
             STATE.uuid = self.uuid_edit.text().strip() or generate_uuid()
             self.uuid_edit.setText(STATE.uuid)

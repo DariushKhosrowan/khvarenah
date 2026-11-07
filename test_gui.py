@@ -58,4 +58,7 @@ def test_autopilot_worker_page_sets_name_field(win):
     worker = win._pages["worker"]
     STATE.autopilot = True
     worker.on_enter()
-    assert worker.name_edit.text() == "vpn-edge"
+    # default name should be the derived user name (never a "vpn" label)
+    assert worker.name_edit.text()
+    assert "vpn" not in worker.name_edit.text().lower()
+    assert worker.name_edit.text() == safe_worker_name(worker.name_edit.text())

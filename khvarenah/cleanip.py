@@ -85,9 +85,14 @@ def _collect_endpoints(live_pattern: Optional[str], out_file: Optional[Path],
         if GOOD_IP.match(e) and e not in seen:
             seen.append(e)
 
-    # live results file
+    # live results file — the scanner writes these to the CWD, so glob BOTH
+    # the explicitly-passed pattern (BIN_DIR) and the current directory.
+    patterns = []
     if live_pattern:
-        for f in sorted(glob.glob(live_pattern), reverse=True):
+        patterns.append(live_pattern)
+    patterns.append(str(Path.cwd() / "SenPaiScannerResult-*.txt"))
+    for pat in patterns:
+        for f in sorted(glob.glob(pat), reverse=True):
             try:
                 for line in Path(f).read_text().splitlines():
                     m = ENDPOINT_IN_LINE.search(line)

@@ -64,7 +64,7 @@ _TR = {
         "A fresh **UUID** is generated automatically — you can keep it or paste your own.",
         "به ورکر یک **نام** بدهید (حروف کوچک، رقم، خط تیره؛ حداکثر ۶۴ نویسه).",
     ),
-    "worker.name_ph": ("worker name (e.g. my-vpn)", "نام ورکر (مثلاً my-vpn)"),
+    "worker.name_ph": ("worker name (e.g. khosrowan)", "نام ورکر (مثلاً khosrowan)"),
     "worker.uuid_ph": ("UUID (auto)", "UUID (خودکار)"),
     "worker.continue": ("Continue", "ادامه"),
     # ---- deploy ----
