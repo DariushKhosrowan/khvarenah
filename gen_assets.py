@@ -1,172 +1,237 @@
 #!/usr/bin/env python3
-"""Generate high-quality Khvarenah brand assets with Pillow only (no external
-image API needed, always works offline).
+"""Khvarenah brand emblem — sacred flame + Faravahar wings (Pillow only).
+
+Implements the design spec from the DeepSeek bridge:
+
+  KHVARENAH — Emblem Specification (1024x1024):
+  1. bg        full black #0a0705
+  2. halo      warm radial glow centered (512,512), rgba(255,224,150,.16)->0
+  3. rays      24-ray sunburst (even long r=450, odd short r=390), gold grad
+  4. wings     left/right Faravahar wing arcs, 5 tapered curved feathers each
+  5. disc_ring gold ring r=156 #a67c1a, highlight stroke #ffe096
+  6. disc_core black disc r=136 (flame substrate), inner gold edge
+  7. star8     16-point subtle near-black star on the core (outer 108/inner 54)
+  8. flame_outer sacred flame (atar) — 12-point gold polygon
+  9. flame_inner hot white-gold core — 10-point polygon
+ 10. frame     thin outer border ring r=492 #b8862b
 
 Produces:
-  * khvarenah/assets/golden.png   — 1024x1024 square app emblem
-  * docs/golden.png                — copy for the site / og:image
-  * docs/og-image.png              — 1200x630 social share card
-  * docs/favicon.png               — 128x128 rounded favicon
-  * docs/apple-touch-icon.png      — 180x180
+  * khvarenah/assets/golden.png     — 1024x1024 square app emblem
+  * docs/golden.png                 — copy for the site / og-image
+  * docs/favicon.png                — 128x128 rounded favicon
+  * docs/apple-touch-icon.png       — 180x180
+  * docs/og-image.png               — 1200x630 social card
 """
+from __future__ import annotations
+
 import math
 import pathlib
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = pathlib.Path(__file__).resolve().parent
 ASSETS = ROOT / "khvarenah" / "assets"
 DOCS = ROOT / "docs"
 
-GOLD_LIGHT = (255, 224, 150)
-GOLD = (230, 185, 64)
-GOLD_DEEP = (166, 124, 26)
-BLACK = (12, 11, 8)
+# Palette (from spec)
+BLACK = (10, 7, 5)          # #0a0705
+DEEP = (166, 124, 26)       # #a67c1a
+MID = (212, 167, 68)        # #d4a744
+LIGHT = (255, 224, 150)     # #ffe096
+DARK = (26, 15, 5)          # #1a0f05
+FRAME = (184, 134, 43)      # #b8862b
+
+SIZE = 1024
+CX = CY = 512
 
 
 def _lerp(a, b, t):
     return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
 
 
-def _gold(t):
-    """Gold gradient 0..1 from deep to light gold."""
-    return _lerp(GOLD_DEEP, GOLD_LIGHT, t)
+def _grad_color(t):
+    """Gold gradient 0..1: deep -> light."""
+    return _lerp(DEEP, LIGHT, t)
 
 
-def _radial_gradient(size: int, inner, outer):
-    """Circular gradient image (inner color at center → outer at edge)."""
-    im = Image.new("RGB", (size, size))
+def _composite(base, layer):
+    return Image.alpha_composite(base, layer)
+
+
+def _render_radial_halo(size):
+    """Warm radial glow: rgba(255,224,150,.16) at center -> 0 at r=510."""
+    im = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     px = im.load()
     c = size / 2
-    r = size / 2
+    rmax = 510
     for y in range(size):
         for x in range(size):
-            d = math.hypot(x - c, y - c) / r
-            px[x, y] = _lerp(inner, outer, min(1.0, d))
+            d = math.hypot(x - c, y - c)
+            t = min(1.0, d / rmax)
+            # quadratic falloff for a soft halo
+            a = int(40 * (1 - t) ** 2)
+            px[x, y] = (255, 224, 150, a)
     return im
 
 
-def _font(size: int, bold: bool = True):
-    for name in ("DejaVuSans-Bold.ttf", "DejaVuSans.ttf"):
-        try:
-            p = pathlib.Path("/usr/share/fonts/truetype/dejavu") / name
-            if p.exists():
-                return ImageFont.truetype(str(p), size)
-        except Exception:
-            pass
-    return ImageFont.load_default()
+def _feather_polygon(root, tip):
+    """Tapered curved feather blade from root to tip (spec §4)."""
+    pts = []
+    steps = 12
+    ax = tip[0] - root[0]
+    ay = tip[1] - root[1]
+    # perpendicular unit vector
+    length = math.hypot(ax, ay) or 1
+    px = -ay / length
+    py = ax / length
+    upper, lower = [], []
+    for i in range(steps + 1):
+        t = i / steps
+        cx = root[0] + t * ax
+        cy = root[1] + t * ay - 12 * math.sin(math.pi * t)
+        w = 30 * (1 - t) + 2 * t
+        half = w / 2
+        upper.append((cx + px * half, cy + py * half))
+        lower.append((cx - px * half, cy - py * half))
+    return upper + lower[::-1]
+
+
+def make_flame():  # (outer_poly, inner_poly)
+    outer = [
+        (512, 398), (538, 438), (556, 488), (564, 545), (554, 595),
+        (534, 620), (512, 628), (490, 620), (470, 595), (460, 545),
+        (468, 488), (486, 438),
+    ]
+    inner = [
+        (512, 470), (526, 500), (535, 540), (538, 575), (532, 600),
+        (512, 612), (492, 600), (486, 575), (489, 540), (498, 500),
+    ]
+    return outer, inner
 
 
 def make_emblem(size: int = 1024) -> Image.Image:
-    """A radiant winged Persian K emblem with a gold gradient on black."""
-    im = Image.new("RGBA", (size, size), (*BLACK, 255))
-    d = ImageDraw.Draw(im)
+    n = size
+    c = n / 2
+    s = n / 1024.0  # scale factor from the 1024 spec
 
-    # subtle radial halo behind the emblem
-    halo = _radial_gradient(size, (60, 50, 25), BLACK)
-    halo = halo.convert("RGBA")
-    # faint overlay
-    im = Image.alpha_composite(im, halo)
+    def P(x, y):
+        return (round(x * s), round(y * s))
 
-    cx, cy = size / 2, size / 2
-    R = size * 0.34  # outer radius of the sun disc
+    def R(r):
+        return round(r * s)
 
-    # --- solar disc (gold gradient ring) ---
-    disc = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    dd = ImageDraw.Draw(disc)
-    steps = 60
-    for i in range(steps):
-        t0 = i / steps
-        t1 = (i + 1) / steps
-        r0 = R * (0.55 + 0.45 * t0)
-        r1 = R * (0.55 + 0.45 * t1)
-        color = _gold(t0)
-        # draw an annulus segment
-        dd.pieslice([cx - r1, cy - r1, cx + r1, cy + r1],
-                    start=0, end=360, fill=color)
-    # overlay a shading mask: center darker
-    shade = Image.new("L", (size, size), 0)
-    sd = ImageDraw.Draw(shade)
-    for i in range(steps):
-        r0 = R * (0.55 + 0.45 * (i / steps))
-        r1 = R * (0.55 + 0.45 * ((i + 1) / steps))
-        sd.ellipse([cx - r1, cy - r1, cx + r1, cy + r1],
-                   fill=round(255 * (0.35 + 0.65 * (i / steps))))
-    disc.putalpha(Image.composite(
-        Image.new("L", (size, size), 255),
-        shade, shade))
-    im = Image.alpha_composite(im, disc)
+    # --- layer 1: bg ---
+    im = Image.new("RGBA", (n, n), (*BLACK, 255))
 
-    # --- wings (mirrored) ---
-    wing = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    wd = ImageDraw.Draw(wing)
-    for side in (-1, 1):
-        base_y = cy
-        # three tapered feather blades
-        for k, (span, lift) in enumerate(
-                ((0.30, -0.02), (0.44, 0.04), (0.58, 0.12))):
-            x0 = cx + side * R * 0.55
-            x1 = cx + side * R * (0.55 + span)
-            y_top = base_y - R * 0.30 + lift * R
-            y_bot = base_y + R * 0.30 + lift * R
-            wd.polygon([
-                (x0, base_y - R * 0.06),
-                (x1, y_top),
-                (x1 + side * R * 0.10, (y_top + y_bot) / 2),
-                (x1, y_bot),
-                (x0, base_y + R * 0.06),
-            ], fill=_gold(0.4 + 0.2 * k))
-    im = Image.alpha_composite(im, wing)
+    # --- layer 2: halo ---
+    halo = _render_radial_halo(n)
+    im = _composite(im, halo)
 
-    # --- central monogram: stylized "K" / flame ---
-    # Draw a clean bold K as the royal monogram
-    font = _font(int(size * 0.30))
-    label = "K"
-    bbox = d.textbbox((0, 0), label, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    mon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    md = ImageDraw.Draw(mon)
-    md.text((cx - tw / 2 - bbox[0], cy - th / 2 - bbox[1]),
-            label, font=font, fill=(*GOLD, 255))
-    im = Image.alpha_composite(im, mon)
+    # --- layer 3: rays (24-ray sunburst) ---
+    rays = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    rd = ImageDraw.Draw(rays)
+    for i in range(24):
+        angle = math.radians(i * 15)
+        long_ray = i % 2 == 0
+        tip_r = R(450) if long_ray else R(390)
+        base_r = R(150)
+        bh = R(8) if long_ray else R(6)
+        th = R(1)
+        cos, sin = math.cos(angle), math.sin(angle)
+        # base point on the disc edge
+        bx, by = c + cos * base_r, c + sin * base_r
+        tx, ty = c + cos * tip_r, c + sin * tip_r
+        # perpendicular for half-width
+        bpx, bpy = -sin * bh, cos * bh
+        tpx, tpy = -sin * th, cos * th
+        rd.polygon(
+            [(bx + bpx, by + bpy), (tx + tpx, ty + tpy),
+             (tx - tpx, ty - tpy), (bx - bpx, by - bpy)],
+            fill=(*_grad_color(0.15 + 0.85 * (tip_r / 450)), 255))
+    im = _composite(im, rays)
 
-    # --- small flame accents above the disc ---
-    flame = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    fd = ImageDraw.Draw(flame)
-    for i, dx in enumerate((-0.16, 0.0, 0.16)):
-        fx = cx + dx * R
-        fy = cy - R * 0.92
-        fd.ellipse([fx - R * 0.05, fy - R * 0.10,
-                     fx + R * 0.05, fy + R * 0.02], fill=_gold(0.7))
-    im = Image.alpha_composite(im, flame)
-    return im
+    # --- layer 4: wings ---
+    wings = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    wd = ImageDraw.Draw(wings)
+    left_roots = [(355, 462), (352, 487), (350, 512), (352, 537), (355, 562)]
+    left_tips = [(148, 398), (122, 458), (108, 512), (122, 566), (148, 626)]
+    for root, tip in zip(left_roots, left_tips):
+        poly = _feather_polygon(P(*root), P(*tip))
+        grade = (root[1] - 398) / (626 - 398)
+        wd.polygon(poly, fill=(*_lerp(DEEP, LIGHT, grade), 255))
+    # mirror right wing across x = c
+    for root, tip in zip(left_roots, left_tips):
+        rroot = (2 * c - root[0], root[1])
+        rtip = (2 * c - tip[0], tip[1])
+        poly = _feather_polygon(P(*rroot), P(*rtip))
+        grade = (root[1] - 398) / (626 - 398)
+        wd.polygon(poly, fill=(*_lerp(DEEP, LIGHT, grade), 255))
+    im = _composite(im, wings)
 
+    # --- layer 5: disc_ring ---
+    ring = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    ring_d = ImageDraw.Draw(ring)
+    # soft outer bloom
+    ring_d.ellipse([c - R(170), c - R(170), c + R(170), c + R(170)],
+                   outline=(*DEEP, 56), width=R(6))
+    ring_d.ellipse([c - R(156), c - R(156), c + R(156), c + R(156)],
+                   fill=(*DEEP, 255))
+    ring_d.ellipse([c - R(154), c - R(154), c + R(154), c + R(154)],
+                   outline=(*LIGHT, 255), width=R(2))
+    im = _composite(im, ring)
 
-def make_og(logo: Image.Image, width=1200, height=630) -> Image.Image:
-    im = Image.new("RGBA", (width, height), (*BLACK, 255))
-    d = ImageDraw.Draw(im)
-    # gold gradient band on the left edge for depth
-    band = _radial_gradient(max(width, height), (50, 42, 22), BLACK).convert("RGBA")
-    band = band.resize((width, height), Image.LANCZOS)
-    im = Image.alpha_composite(im, band)
+    # --- layer 6: disc_core ---
+    core = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    core_d = ImageDraw.Draw(core)
+    core_d.ellipse([c - R(136), c - R(136), c + R(136), c + R(136)],
+                   fill=(*BLACK, 255))
+    core_d.ellipse([c - R(134), c - R(134), c + R(134), c + R(134)],
+                   outline=(*MID, 255), width=R(1))
+    im = _composite(im, core)
 
-    # logo on the left
-    logo_sq = logo.resize((height - 120, height - 120), Image.LANCZOS)
-    im.paste(logo_sq, (60, 60), logo_sq)
+    # --- layer 7: 16-point subtle star ---
+    star = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    star_d = ImageDraw.Draw(star)
+    star_pts = []
+    for k in range(16):
+        angle = math.radians(k * 22.5)
+        r = R(108) if k % 2 == 0 else R(54)
+        # y-flipped for Pillow (screen y grows downward), so sin is negated
+        star_pts.append((c + math.cos(angle) * r, c - math.sin(angle) * r))
+    star_d.polygon(star_pts, fill=(*DARK, 255))
+    im = _composite(im, star)
 
-    # typography on the right
-    x = 60 + (height - 120) + 70
-    title = "KHVARENAH"
-    f_title = _font(92)
-    f_sub = _font(36)
-    f_line = _font(28)
-    d.text((x, 170), title, font=f_title, fill=(*GOLD, 255))
-    d.text((x, 290), "Cloudflare Worker VLESS", font=f_sub,
-           fill=(220, 205, 165, 255))
-    d.text((x, 350), "· 0 → 100 · from your terminal", font=f_sub,
-           fill=(210, 200, 175, 255))
-    d.text((x, 470), "Ancient Persian Royal Glory — خوَرنه", font=f_line,
-           fill=(180, 160, 120, 255))
+    # --- layer 8/9: flame ---
+    outer_poly, inner_poly = make_flame()
+    flame = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    flame_d = ImageDraw.Draw(flame)
+    # outer flame: fill mid-gold, then vertical gradient clipped by polygon
+    outer_scaled = [P(x, y) for x, y in outer_poly]
+    flame_d.polygon(outer_scaled, fill=(*MID, 255))
+    # simple vertical gradient overlay (top light -> bottom deep)
+    grad = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(grad)
+    y0, y1 = R(398), R(628)
+    # approximate: draw horizontal gradient stripes clipped by the flame
+    mask = Image.new("L", (n, n), 0)
+    ImageDraw.Draw(mask).polygon(outer_scaled, fill=255)
+    for yy in range(y0, y1 + 1):
+        t = (yy - y0) / max(1, y1 - y0)
+        gd.line([(0, yy), (n, yy)], fill=(*_lerp(LIGHT, DEEP, t), 255))
+    flame = Image.composite(grad, flame, mask)
+    # inner flame (hot white-gold core)
+    inner_scaled = [P(x, y) for x, y in inner_poly]
+    inner_layer = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    ImageDraw.Draw(inner_layer).polygon(inner_scaled, fill=(*LIGHT, 230))
+    flame = _composite(flame, inner_layer)
+    im = _composite(im, flame)
+
+    # --- layer 10: frame ring ---
+    frame = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    ImageDraw.Draw(frame).ellipse(
+        [c - R(492), c - R(492), c + R(492), c + R(492)],
+        outline=(*FRAME, 255), width=R(2))
+    im = _composite(im, frame)
+
     return im
 
 
@@ -174,9 +239,8 @@ def main():
     ASSETS.mkdir(parents=True, exist_ok=True)
     DOCS.mkdir(parents=True, exist_ok=True)
 
-    print("Rendering square emblem …")
-    logo = make_emblem(1024)
-    logo = logo.convert("RGB").convert("RGBA")
+    print("Rendering Khvarenah emblem (sacred flame + Faravahar wings) …")
+    logo = make_emblem(1024).convert("RGB").convert("RGBA")
     logo.save(ASSETS / "golden.png")
     logo.save(DOCS / "golden.png")
     print("  golden.png (1024x1024)")
@@ -193,8 +257,16 @@ def main():
     print("  apple-touch-icon.png (180x180)")
 
     print("Rendering og:image …")
-    og = make_og(logo).convert("RGB")
-    og.save(DOCS / "og-image.png")
+    og = Image.new("RGBA", (1200, 630), (*BLACK, 255))
+    og_d = ImageDraw.Draw(og)
+    logo_sq = logo.resize((510, 510), Image.LANCZOS)
+    og.paste(logo_sq, (60, 60), logo_sq)
+    x = 60 + 510 + 70
+    og_d.text((x, 170), "KHVARENAH", fill=(*LIGHT, 255))
+    og_d.text((x, 290), "Cloudflare Worker VLESS", fill=(220, 205, 165, 255))
+    og_d.text((x, 350), "· 0 → 100 · from your terminal", fill=(210, 200, 175, 255))
+    og_d.text((x, 470), "Sacred flame — خوَرنه", fill=(180, 160, 120, 255))
+    og.convert("RGB").save(DOCS / "og-image.png")
     print("  og-image.png (1200x630)")
 
     print("Done.")
