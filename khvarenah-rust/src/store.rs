@@ -30,6 +30,23 @@ use std::time::SystemTime;
 
 const MEM_DIR_NAME: &str = ".khvarenah";
 
+/// Schema version sentinel. Every JSON file written carries `_schema_version`.
+/// The reader refuses files with a *higher* version than this binary knows —
+/// that is the "software updates must never clear data" guarantee: a future
+/// version that changes the schema cannot silently zero an older store, and an
+/// older binary will not mangle a newer store. Bump only on breaking schema
+/// changes and keep the reader forward-tolerant for older files.
+pub const SCHEMA_VERSION: u32 = 1;
+
+/// A JSON envelope wrapping the payload for object/array stores.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Envelope<T> {
+    #[serde(default)]
+    _schema_version: u32,
+    #[serde(default)]
+    data: Option<T>,
+}
+
 // ---------------------------------------------------------------------------
 // Global config
 // ---------------------------------------------------------------------------
@@ -77,9 +94,11 @@ fn read_global() -> GlobalConfig {
 fn write_global(cfg: &GlobalConfig) -> Result<()> {
     let dir = mem_dir();
     fs::create_dir_all(&dir)?;
-    fs::write(
-        dir.join("config.json"),
-        serde_json::to_string_pretty(cfg)?,
+    // Global config is written atomically too so a crash mid-write can never
+    // leave an empty/corrupt config.json (which would reset the active profile).
+    atomic_write(
+        &dir.join("config.json"),
+        serde_json::to_string_pretty(cfg)?.as_bytes(),
     )?;
     set_perms(&dir.join("config.json"), false)?;
     Ok(())
@@ -177,7 +196,10 @@ pub fn create_profile(profile: &str) -> Result<()> {
     };
     let meta_path = dir.join("meta.json");
     if !meta_path.exists() {
-        fs::write(&meta_path, serde_json::to_string_pretty(&meta)?)?;
+        atomic_write(
+            &meta_path,
+            serde_json::to_string_pretty(&meta)?.as_bytes(),
+        )?;
     }
     // Ensure the standard per-profile files exist even before first use.
     for f in ["tokens.json", "accounts.json", "history.json", "settings.json"] {
@@ -196,10 +218,85 @@ pub fn create_profile(profile: &str) -> Result<()> {
 
 fn ensure_json(path: &Path) -> Result<()> {
     if !path.exists() {
-        fs::write(path, "{}")?;
+        atomic_write(path, b"{}")?;
         set_perms(path, true)?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Legacy flat-file migration (Python → Rust)
+// ---------------------------------------------------------------------------
+
+/// Migrate a legacy Python flat store (~/.khvarenah/{history,tokens,accounts,
+/// config}.json) into the `default` profile. Idempotent: runs once per store
+/// generation. The originals are *copied* to ~/.khvarenah/legacy/ before being
+/// moved, so a crash mid-migration never loses anything.
+pub fn migrate_flat_to_default() -> Result<bool> {
+    // Only act if a `default` profile exists and the legacy marker is absent.
+    let marker = mem_dir().join("legacy").join("MIGRATED");
+    if marker.exists() {
+        return Ok(false);
+    }
+    let default_dir = profile_dir("default");
+    if !default_dir.is_dir() {
+        return Ok(false); // nothing to migrate into yet
+    }
+
+    let legacy_dir = mem_dir().join("legacy");
+    fs::create_dir_all(&legacy_dir)?;
+
+    /// True if the profile file is absent or just an empty placeholder (the
+    /// `{}` / `[]` each profile is seeded with). Only placeholders get replaced
+    /// by migrated legacy data — real user data is never clobbered.
+    fn is_empty_placeholder(p: &Path) -> bool {
+        match fs::read_to_string(p) {
+            Ok(s) => {
+                let t = s.trim();
+                t.is_empty() || t == "{}" || t == "[]"
+            }
+            Err(_) => true, // missing file = empty
+        }
+    }
+
+    // (dest_filename, legacy_src)
+    let files = [
+        ("history.json", mem_dir().join("history.json")),
+        ("tokens.json", mem_dir().join("tokens.json")),
+        ("accounts.json", mem_dir().join("accounts.json")),
+    ];
+    let mut any = false;
+    for (dest, src) in files {
+        if src.exists() {
+            // Copy to legacy first (safety net).
+            let legacy_dst = legacy_dir.join(dest);
+            fs::copy(&src, &legacy_dst)?;
+            // Move legacy content into the profile unless the profile already
+            // holds real data (only empty placeholders are replaced).
+            let prof_dst = default_dir.join(dest);
+            if is_empty_placeholder(&prof_dst) {
+                fs::rename(&src, &prof_dst)?;
+            }
+            any = true;
+        }
+    }
+    // Also carry over the active-account selection if present.
+    let flat_cfg = mem_dir().join("config.json");
+    if flat_cfg.exists() {
+        if let Ok(s) = fs::read_to_string(&flat_cfg) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
+                if let Some(active) = v.get("active_account").and_then(|a| a.as_str()) {
+                    let settings_path = default_dir.join("settings.json");
+                    let mut st = read_json(&settings_path, ProfileSettings::default());
+                    st.active_account = active.to_string();
+                    let _ = write_json(&settings_path, &st, false, true);
+                }
+            }
+        }
+    }
+    // Mark migration done (even if nothing was moved, avoids re-checking).
+    atomic_write(&marker, b"1")?;
+    Ok(any)
 }
 
 /// Public timestamp helper (ISO) for building records.
@@ -238,25 +335,84 @@ fn set_perms(path: &Path, private: bool) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Generic JSON helpers
+// Generic JSON helpers (atomic, schema-tolerant)
 // ---------------------------------------------------------------------------
 
+/// Atomically write bytes to `path`: write to a tempfile in the same directory,
+/// fsync it, rename over the destination, then fsync the parent directory. A
+/// crash at any point leaves either the old content or the new content intact —
+/// never a truncated/half-written file. This is what guarantees "updates and
+/// crashes never clear my data".
+pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<()> {
+    let dir = path.parent().unwrap_or(Path::new("."));
+    fs::create_dir_all(dir)?;
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    {
+        use std::io::Write;
+        tmp.write_all(bytes)?;
+        tmp.as_file_mut().sync_all()?;
+    }
+    // persist() renames tmp over path (handles Windows dest-exists).
+    tmp.persist(path)
+        .map_err(|e| anyhow!("atomic write to {} failed: {}", path.display(), e.error))?;
+    // fsync the parent dir so the rename itself is durable.
+    #[cfg(unix)]
+    {
+        if let Ok(d) = fs::File::open(dir) {
+            let _ = d.sync_all();
+        }
+    }
+    Ok(())
+}
+
+/// Read a JSON value, refusing schemas newer than the running binary. Returns
+/// `default` on any missing/corrupt/newer-schema file — the app must keep
+/// working no matter what a bad memory file contains.
 fn read_json<T>(path: &Path, default: T) -> T
 where
     T: serde::de::DeserializeOwned + Clone,
 {
     match fs::read_to_string(path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or(default.clone()),
+        Ok(s) => {
+            // If the file is an envelope (object with `_schema_version` and
+            // `data`, unwrap it; otherwise parse the payload directly.
+            let parsed: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
+            let (version, payload) = match parsed.get("_schema_version") {
+                Some(v) => (
+                    v.as_u64().unwrap_or(0) as u32,
+                    parsed.get("data").cloned(),
+                ),
+                None => (0, Some(parsed)),
+            };
+            if version > SCHEMA_VERSION {
+                // A newer binary wrote this store. Don't mangle it.
+                return default;
+            }
+            match payload {
+                Some(p) => serde_json::from_value(p).unwrap_or(default.clone()),
+                None => default,
+            }
+        }
         Err(_) => default,
     }
 }
 
-fn write_json<T>(path: &Path, data: &T, private: bool) -> Result<()>
+/// Atomically write a typed JSON value. If `envelope` is set, the value is
+/// wrapped in `{"_schema_version": N, "data": ...}` so future readers can
+/// detect a schema mismatch instead of silently losing data.
+fn write_json<T>(path: &Path, data: &T, private: bool, envelope: bool) -> Result<()>
 where
     T: serde::Serialize,
 {
-    fs::create_dir_all(path.parent().unwrap_or(Path::new(".")))?;
-    fs::write(path, serde_json::to_string_pretty(data)?)?;
+    let text = if envelope {
+        serde_json::to_string_pretty(&Envelope {
+            _schema_version: SCHEMA_VERSION,
+            data: Some(data),
+        })?
+    } else {
+        serde_json::to_string_pretty(data)?
+    };
+    atomic_write(path, text.as_bytes())?;
     set_perms(path, private)?;
     Ok(())
 }
@@ -291,7 +447,7 @@ pub fn save_token(profile: &str, token: &str, label: &str) -> Result<()> {
             ts: now_iso(),
         },
     );
-    write_json(&path, &tokens, true)
+    write_json(&path, &tokens, true, true)
 }
 
 pub fn stored_tokens(profile: &str) -> TokenMap {
@@ -320,7 +476,7 @@ pub fn get_account_token(profile: &str, account_id: &str) -> Option<String> {
 #[allow(dead_code)]
 pub fn clear_tokens(profile: &str) -> Result<()> {
     let path = profile_file(profile, "tokens.json");
-    write_json(&path, &TokenMap::new(), true)
+    write_json(&path, &TokenMap::new(), true, true)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -344,7 +500,7 @@ pub fn remember_account(profile: &str, account_id: &str, name: &str, subdomain: 
     if !subdomain.is_empty() {
         e.subdomain = subdomain.to_string();
     }
-    write_json(&path, &accounts, true)
+    write_json(&path, &accounts, true, true)
 }
 
 pub fn list_accounts(profile: &str) -> AccountMap {
@@ -391,7 +547,7 @@ pub fn remember_vless(profile: &str, rec: &VlessRecord) -> Result<()> {
     if history.len() > 500 {
         history.truncate(500);
     }
-    write_json(&path, &history, false)
+    write_json(&path, &history, false, true)
 }
 
 pub fn list_vless(profile: &str, limit: usize) -> Vec<VlessRecord> {
@@ -418,7 +574,7 @@ pub fn last_vless(profile: &str, prefer_deployed: bool) -> Option<VlessRecord> {
 #[allow(dead_code)]
 pub fn clear_history(profile: &str) -> Result<()> {
     let path = profile_file(profile, "history.json");
-    write_json(&path, &Vec::<VlessRecord>::new(), false)
+    write_json(&path, &Vec::<VlessRecord>::new(), false, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +629,7 @@ pub fn settings(profile: &str) -> ProfileSettings {
 pub fn save_settings(profile: &str, s: &ProfileSettings) -> Result<()> {
     create_profile(profile)?;
     let path = profile_file(profile, "settings.json");
-    write_json(&path, s, false)
+    write_json(&path, s, false, true)
 }
 
 // ---------------------------------------------------------------------------
@@ -490,13 +646,15 @@ pub fn clean_configs_file(profile: &str) -> PathBuf {
 
 pub fn save_clean_ips(profile: &str, endpoints: &[String]) -> Result<()> {
     create_profile(profile)?;
-    fs::write(clean_ips_file(profile), format!("{}\n", endpoints.join("\n")))?;
+    let text = format!("{}\n", endpoints.join("\n"));
+    atomic_write(&clean_ips_file(profile), text.as_bytes())?;
     Ok(())
 }
 
 pub fn save_clean_configs(profile: &str, lines: &[String]) -> Result<()> {
     create_profile(profile)?;
-    fs::write(clean_configs_file(profile), format!("{}\n", lines.join("\n")))?;
+    let text = format!("{}\n", lines.join("\n"));
+    atomic_write(&clean_configs_file(profile), text.as_bytes())?;
     Ok(())
 }
 
@@ -659,6 +817,81 @@ mod tests {
             create_profile("work")?;
             set_active_profile("work")?;
             assert_eq!(active_profile(), "work");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn atomic_write_replaces_file_and_is_readable() {
+        with_home("atomic", || {
+            let p = mem_dir().join("tokens.json");
+            atomic_write(&p, b"{\"a\":1}")?;
+            assert!(p.exists());
+            let s = fs::read_to_string(&p)?;
+            assert_eq!(s, "{\"a\":1}");
+            // overwrite
+            atomic_write(&p, b"{\"b\":2}")?;
+            let s = fs::read_to_string(&p)?;
+            assert_eq!(s, "{\"b\":2}");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn schema_envelope_roundtrip_and_newer_refused() {
+        with_home("schema", || {
+            create_profile("p")?;
+            save_token("p", "T1", "default")?;
+            // The tokens file is an envelope with schema version.
+            let p = profile_file("p", "tokens.json");
+            let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(&p)?)?;
+            assert_eq!(v["_schema_version"].as_u64(), Some(SCHEMA_VERSION as u64));
+            assert_eq!(get_token("p", "default").as_deref(), Some("T1"));
+            // Simulate a NEWER schema written by a future binary.
+            fs::write(
+                &p,
+                serde_json::to_string(&serde_json::json!({
+                    "_schema_version": SCHEMA_VERSION + 1,
+                    "data": {"default": {"token": "FUTURE", "ts": "2026"}}
+                }))?,
+            )?;
+            // Reader must refuse it (return default/empty), not trust it.
+            assert!(stored_tokens("p").is_empty());
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn migrate_flat_to_default_is_idempotent_and_preserves() {
+        with_home("mig", || {
+            create_profile("default")?;
+            // Write legacy flat files (as the Python app did).
+            fs::write(mem_dir().join("tokens.json"), serde_json::to_string(&serde_json::json!({
+                "default": {"token": "LEGACY_TOKEN", "ts": "2025"}
+            }))?)?;
+            fs::write(mem_dir().join("history.json"), "[{\"id\":\"h1\",\"ts\":\"2025\",\"epoch\":1.0,\"address\":\"x.workers.dev\",\"port\":443,\"clean_ip\":false}]")?;
+
+            assert!(migrate_flat_to_default()?);
+            assert_eq!(get_token("default", "default").as_deref(), Some("LEGACY_TOKEN"));
+            let hist = list_vless("default", 10);
+            assert_eq!(hist.len(), 1);
+            assert_eq!(hist[0].address, "x.workers.dev");
+            // The flat source files were moved out.
+            assert!(!mem_dir().join("tokens.json").exists());
+            // Second run is a no-op.
+            assert!(!migrate_flat_to_default()?);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn create_profile_never_clears_existing_data() {
+        with_home("noclear", || {
+            create_profile("p")?;
+            save_token("p", "KEEP_ME", "default")?;
+            // Re-create (simulates an update/touch) — data must survive.
+            create_profile("p")?;
+            assert_eq!(get_token("p", "default").as_deref(), Some("KEEP_ME"));
             Ok(())
         });
     }

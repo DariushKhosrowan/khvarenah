@@ -157,6 +157,10 @@ struct CommonArgs {
     /// Compatibility date for the deployed worker
     #[arg(long, default_value = cf_api::DEFAULT_COMPAT_DATE)]
     compat_date: String,
+
+    /// Verbose debug output
+    #[arg(long, global = true)]
+    verbose: bool,
 }
 
 #[derive(clap::Args)]
@@ -184,6 +188,16 @@ fn main() {
     if let Some(p) = &cli.profile {
         if !p.is_empty() {
             std::env::set_var("KHVARENAH_PROFILE", p);
+        }
+    }
+
+    // On every run, ensure the default profile exists and run the one-time
+    // legacy flat-file migration (Python → Rust) so old tokens/configs/history
+    // are never lost when moving to the Rust build.
+    if store::active_profile() == "default" {
+        let _ = store::ensure_profile("default");
+        if let Err(e) = store::migrate_flat_to_default() {
+            eprintln!("[warn] legacy migration skipped: {e}");
         }
     }
 
@@ -530,8 +544,22 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
         if eps.is_empty() {
             return Err(anyhow!("No clean IPs found."));
         }
+        // Verify each candidate in order. We stop as soon as we have `top`
+        // *verified working* endpoints (top defaults to 1 → stop on the first
+        // working IP, per the smart clean-IP behaviour). Only raise top via
+        // --more N / --all to keep going.
+        let verify_tls = prof.security == "tls";
         let mut configs: Vec<(String, String)> = Vec::new();
         for ep in eps {
+            if !cleanip::endpoint_reachable(ep, args.timeout.into(), verify_tls) {
+                if args.verbose {
+                    eprintln!("[debug] candidate skipped (unreachable): {ep}");
+                }
+                continue;
+            }
+            if args.verbose {
+                eprintln!("[debug] candidate verified: {ep}");
+            }
             let working_link = rewrite_vless_with_endpoint(&link, ep);
             let (ip, port) = split_endpoint(ep);
             let rec = VlessRecord {
@@ -548,6 +576,16 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
             };
             let _ = store::remember_vless(&profile, &rec);
             configs.push((ep.clone(), working_link));
+            // Smart stop: once we have the requested number of working IPs, stop.
+            if configs.len() >= top as usize {
+                break;
+            }
+        }
+
+        if configs.is_empty() {
+            return Err(anyhow!(
+                "Scanner reported endpoints but none passed the health check. Try a larger --count, longer --timeout, or different --ports."
+            ));
         }
 
         // Best first
@@ -563,14 +601,15 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
         }
 
         // Save per-profile.
-        let ep_list: Vec<String> = eps.clone();
+        let ep_list: Vec<String> = configs.iter().map(|(ep, _)| ep.clone()).collect();
         store::save_clean_ips(&profile, &ep_list)?;
         let cfg_lines: Vec<String> = configs
             .iter()
             .map(|(ep, link)| format!("# {ep}\n{link}"))
             .collect();
         store::save_clean_configs(&profile, &cfg_lines)?;
-        println!("\nSaved endpoints → {} · {} configs → {}",
+        println!(
+            "\nSaved endpoints → {} · {} configs → {}",
             store::clean_ips_file(&profile).display(),
             configs.len(),
             store::clean_configs_file(&profile).display()
@@ -578,7 +617,10 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
 
         // If the user asked for more than we got, note it.
         if (top as usize) > configs.len() {
-            println!("\nNote: asked for {top}, found {}. The scanner stopped when no more clean IPs were available.", configs.len());
+            println!(
+                "\nNote: asked for {top}, found {}. The scanner stopped when no more clean IPs were available.",
+                configs.len()
+            );
         } else if args.more.is_none() && !args.all && configs.len() <= 1 {
             println!("\n(stopped after the first working IP — use --more N or --all to find more)");
         }
