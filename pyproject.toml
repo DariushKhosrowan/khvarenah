@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "khvarenah"
 version = "0.1.0"
-description = "Khvarenah (خوَرنه) — ancient Persian royal glory; a Cloudflare-worker VLESS VPN console in your terminal."
+description = "Khvarenah (Khovarenah, خوَرنه) — ancient Persian royal glory; a Cloudflare-worker VLESS VPN console in your terminal."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Dariush Khosrowan", email = "dariush@khosrowan.ir" }]
-keywords = ["vpn", "proxy", "vless", "cloudflare", "workers", "iran", "persian", "khvarenah"]
+keywords = ["vpn", "proxy", "vless", "cloudflare", "workers", "iran", "persian", "khvarenah", "khovarenah"]
 classifiers = [
   "Environment :: Console",
   "Operating System :: POSIX :: Linux",

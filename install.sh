@@ -4,7 +4,7 @@
 # the actual source before installing instead of assuming a local checkout.
 #
 # One-liner:
-#   curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/khvarenah/main/install.sh | bash
 #
 # What it does:
 #   1. Downloads the project source tarball (main branch) to a stable location
@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-REPO="DariushKhosrowan/cf-console"
+REPO="DariushKhosrowan/khvarenah"
 BRANCH="main"
 BASE="${HOME}/.local/share/khvarenah"
 SRC="${BASE}/src"

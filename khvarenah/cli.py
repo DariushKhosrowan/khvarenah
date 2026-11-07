@@ -1,4 +1,4 @@
-"""Headless CLI for cf-console.  Cross-platform (Linux/Windows).
+"""Headless CLI for Khvarenah.  Cross-platform (Linux/Windows).
 
 Purpose: drive the whole zero→100 workflow from a terminal without the TUI:
     python cli.py check [token]
@@ -30,10 +30,10 @@ VERSION = "0.1.0"
 
 def _token(arg: str) -> str:
     if not arg:
-        p = Path.home() / ".cf-console" / "token"
+        p = Path.home() / ".khvarenah" / "token"
         if p.exists():
             return p.read_text().strip()
-        print("No token provided. Pass --token <CF_API_TOKEN> or save it to ~/.cf-console/token",
+        print("No token provided. Pass --token <CF_API_TOKEN> or save it to ~/.khvarenah/token",
               file=sys.stderr)
         sys.exit(1)
     return arg
@@ -45,7 +45,7 @@ def _print_dict(label: str, d: dict) -> None:
 
 
 def cmd_version(_) -> int:
-    print(f"cf-console {VERSION}")
+    print(f"khvarenah {VERSION}")
     return 0
 
 

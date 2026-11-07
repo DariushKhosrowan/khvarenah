@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://dariushkhosrowan.github.io/cf-console/sitemap.xml
+Sitemap: https://dariushkhosrowan.github.io/khvarenah/sitemap.xml

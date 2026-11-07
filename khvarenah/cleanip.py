@@ -5,7 +5,7 @@ vless config (it bundles an Xray core), and exports clean endpoints.  We shell
 out to its standalone CLI in plain-text mode, collect its live-results file,
 and return the healthy endpoints.
 
-Binary is auto-installed to ~/.cf-console/bin/senpaiscanner.
+Binary is auto-installed to ~/.khvarenah/bin/senpaiscanner.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
-BIN_DIR = Path.home() / ".cf-console" / "bin"
+BIN_DIR = Path.home() / ".khvarenah" / "bin"
 BIN = BIN_DIR / ("senpaiscanner.exe" if os.name == "nt" else "senpaiscanner")
 RELEASE = "v1.1.1"
 GOOD_IP = re.compile(r"^\d{1,3}(\.\d{1,3}){3}:\d+$")

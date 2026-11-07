@@ -1,4 +1,4 @@
-"""Unit tests for the cf-console error classifier and guard logic.
+"""Unit tests for the Khvarenah error classifier and guard logic.
 
 Run:  .venv/bin/python -m pytest test_classifier.py -q
 (or: python -m unittest test_classifier.py)

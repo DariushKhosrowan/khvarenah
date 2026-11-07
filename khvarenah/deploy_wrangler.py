@@ -92,7 +92,7 @@ def deploy_wrangler(token: str, account_id: str, name: str, worker_path: str,
                     uuid: str, *, timeout: int = 180) -> DeployResult:
     """Deploy `worker_path` under `name` with vars UUID=... using wrangler."""
     wbin = wrangler_bin()
-    with tempfile.TemporaryDirectory(prefix="cf-console-") as td:
+    with tempfile.TemporaryDirectory(prefix="khvarenah-") as td:
         td_ = Path(td)
         # copy worker to a stable name
         src = Path(worker_path)

@@ -2,14 +2,14 @@
 
 # ✦ Khvarenah (خوَرنه) · **Khosrowan**
 
-**The ancient Persian royal glory — a Cloudflare-Worker VLESS VPN console in your terminal.**
+**The ancient Persian royal glory — a Cloudflare-Worker VLESS VPN console in your terminal.** *(Khvarenah — also spelled Khovarenah, خوَرنه — the Avestan divine glory.)*
 
 Create and control a Cloudflare-Worker VLESS VPN — from zero to 100, entirely from your terminal. Cross-platform (Linux · Windows) · Interactive TUI wizard + headless CLI · Friendly error explanations.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://python.org)
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-2ea44f)](https://github.com/DariushKhosrowan/cf-console)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-2ea44f)](https://github.com/DariushKhosrowan/khvarenah)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![GitHub Pages](https://img.shields.io/badge/Docs-Site-2ea44f)](https://dariushkhosrowan.github.io/cf-console/)
+[![GitHub Pages](https://img.shields.io/badge/Docs-Site-2ea44f)](https://dariushkhosrowan.github.io/khvarenah/)
 [![Khosrowan](https://img.shields.io/badge/Khosrowan-khosrowan.ir-2ea44f)](https://khosrowan.ir)
 [![Telegram](https://img.shields.io/badge/Telegram-%40Khosrowan_ir-26A5E4?logo=telegram&logoColor=white)](https://t.me/Khosrowan_ir)
 
@@ -58,20 +58,20 @@ The interactive wizard guides you **0 → 100** — welcome, token, account, wor
 ### For non-programmers (recommended)
 
 Install the **.deb** (Linux) or **.exe** (Windows) from
-[GitHub Releases](https://github.com/DariushKhosrowan/cf-console/releases) —
+[GitHub Releases](https://github.com/DariushKhosrowan/khvarenah/releases) —
 both bundle Python, so nothing else is needed.
 
 **Linux** — one command (no git, no pip, no coding):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/khvarenah/main/install.sh | bash
 ```
 
 …or grab the `.deb` directly (note: the `./khvarenah_*.deb` glob only works if a matching file is in the current folder, so download it first):
 
 ```bash
 curl -fsSL -o /tmp/khvarenah.deb \
-  https://github.com/DariushKhosrowan/cf-console/releases/latest/download/khvarenah_0.1.0_amd64.deb
+  https://github.com/DariushKhosrowan/khvarenah/releases/latest/download/khvarenah_0.1.0_amd64.deb
 sudo apt install /tmp/khvarenah.deb
 ```
 
@@ -86,8 +86,8 @@ Then just run `khvarenah` from any terminal.
 > Ubuntu/Debian). Installing adds the `khvarenah` command to your PATH.
 
 ```bash
-git clone https://github.com/DariushKhosrowan/cf-console.git
-cd cf-console
+git clone https://github.com/DariushKhosrowan/khvarenah.git
+cd khvarenah
 ./install.sh                # creates .venv, installs, and launches the TUI
 # or, if you know what you're doing:
 python3 -m venv .venv
@@ -104,8 +104,8 @@ khvarenah cli --help       # headless CLI
 ### Windows (developer)
 
 ```bat
-git clone https://github.com/DariushKhosrowan/cf-console.git
-cd cf-console
+git clone https://github.com/DariushKhosrowan/khvarenah.git
+cd khvarenah
 python -m venv .venv
 .venv\Scripts\pip install -e .
 .venv\Scripts\khvarenah
@@ -119,7 +119,7 @@ python -m venv .venv
   ```bash
   npm install -g wrangler
   ```
-- **A Cloudflare API token** with `Workers Scripts: Edit` and `Account Settings: Read` permissions ([create one here](https://dash.cloudflare.com/profile/api-tokens)). Save it once to `~/.cf-console/token` — or pass `--token` each run.
+- **A Cloudflare API token** with `Workers Scripts: Edit` and `Account Settings: Read` permissions ([create one here](https://dash.cloudflare.com/profile/api-tokens)). Save it once to `~/.khvarenah/token` — or pass `--token` each run.
 
 > 💡 The console auto-detects the [edgetunnel](https://github.com/cmliu/edgetunnel) worker bundle from this repo or `~/Projects/cf-worker-proxy/_worker.js`. Point elsewhere with `--worker <path>`.
 
@@ -197,9 +197,9 @@ curl --socks5-hostname 127.0.0.1:10808 https://www.google.com   # → 200
 ## 🗂️ Project structure
 
 ```
-cf-console/
+khvarenah/
 ├── pyproject.toml         # packaging + console_scripts (khvarenah)
-├── cf-console.sh          # legacy Linux/macOS launcher
+├── khvarenah.sh          # legacy Linux/macOS launcher
 ├── run.bat                # legacy Windows launcher
 ├── run.py                 # legacy entry point (TUI default, `cli` subcommand)
 ├── test_classifier.py     # unit tests (error classifier, config gen)
@@ -233,4 +233,4 @@ MIT — free to use, modify, and share. See [LICENSE](LICENSE).
 
 **A [Khosrowan](https://khosrowan.ir) tool.** Join us on Telegram: [@Khosrowan_ir](https://t.me/Khosrowan_ir).
 
-**Questions?** Open an [issue](https://github.com/DariushKhosrowan/cf-console/issues) — and if the error you hit isn't explained well, tell us; we want Khvarenah to understand it.
+**Questions?** Open an [issue](https://github.com/DariushKhosrowan/khvarenah/issues) — and if the error you hit isn't explained well, tell us; we want Khvarenah to understand it.
