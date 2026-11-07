@@ -1,48 +1,63 @@
 #!/usr/bin/env bash
-# Khvarenah installer — safe for non-programmers.
+# Khvarenah self-contained installer — safe for non-programmers, and works
+# from ANY directory (including via the one-liner below), because it fetches
+# the actual source before installing instead of assuming a local checkout.
 #
-# Creates a dedicated virtualenv (avoids the PEP 668 "externally-managed
-# environment" error on modern Ubuntu/Debian) and installs Khvarenah into it.
-# Then runs `khvarenah` for you.
+# One-liner:
+#   curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash
 #
-# Usage:
-#   ./install.sh              # install + launch the TUI wizard
-#   ./install.sh cli --help   # install + run a headless CLI command
+# What it does:
+#   1. Downloads the project source tarball (main branch) to a stable location
+#      under ~/.local/share/khvarenah/.
+#   2. Creates a dedicated virtualenv there (avoids the PEP 668
+#      "externally-managed environment" error on modern Ubuntu/Debian).
+#   3. Installs Khvarenah into it and then launches it.
 #
-# Safe to run more than once (it reuses the existing venv, reinstalling
-# the package to pick up updates).
+# Safe to run more than once (it re-fetches and reinstalls to pick up updates).
 
 set -euo pipefail
-cd "$(dirname "$0")"
 
-VENV=".venv"
-BIN="$VENV/bin"
-PY="$BIN/python"
-PIP="$BIN/pip"
-CMD="$BIN/khvarenah"
+REPO="DariushKhosrowan/cf-console"
+BRANCH="main"
+BASE="${HOME}/.local/share/khvarenah"
+SRC="${BASE}/src"
+VENV="${BASE}/venv"
+PY="${VENV}/bin/python"
+PIP="${VENV}/bin/pip"
+CMD="${VENV}/bin/khvarenah"
 
 echo "⟡ Khvarenah installer"
-echo "  creating virtualenv: $VENV"
+echo "  install prefix: ${BASE}"
 
-# Create the venv if it does not exist yet.
-if [ ! -x "$PY" ]; then
-  # Try to make sure python3-venv is present (needed on Debian/Ubuntu).
-  if ! python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
-    echo "  installing python3-venv (needs sudo, one-time)..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq python3-venv python3-full
-  fi
-  python3 -m venv "$VENV"
+# Ensure python3-venv is present (Debian/Ubuntu split it out).
+if ! python3 -c "import ensurepip, venv" >/dev/null 2>&1; then
+  echo "  installing python3-venv (needs sudo, one-time)..."
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq python3-venv python3-full
+fi
+
+# Fetch the source tarball (works even where git over SSH/HTTPS is throttled).
+echo "  fetching source from GitHub (${BRANCH})..."
+mkdir -p "${BASE}"
+TARBALL="${BASE}/source.tar.gz"
+curl -fsSL "https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz" -o "${TARBALL}"
+rm -rf "${SRC}"
+mkdir -p "${SRC}"
+tar -xzf "${TARBALL}" -C "${SRC}" --strip-components=1
+
+echo "  creating/reusing virtualenv..."
+if [ ! -x "${PY}" ]; then
+  python3 -m venv "${VENV}"
 fi
 
 echo "  installing/updating Khvarenah + dependencies..."
-"$PIP" install --quiet --upgrade pip >/dev/null
-"$PIP" install --quiet -e . >/dev/null
+"${PIP}" install --quiet --upgrade pip >/dev/null
+"${PIP}" install --quiet "${SRC}" >/dev/null
 
 echo "  installed. —"
 echo
 if [ $# -eq 0 ]; then
-  exec "$CMD"
+  exec "${CMD}"
 else
-  exec "$CMD" "$@"
+  exec "${CMD}" "$@"
 fi
