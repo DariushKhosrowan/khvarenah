@@ -5,6 +5,7 @@ Run:  .venv/bin/python -m pytest test_classifier.py -q
 """
 import sys
 import unittest
+import urllib.parse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -55,23 +56,41 @@ class NameTests(unittest.TestCase):
 
 
 class VlessTests(unittest.TestCase):
+    BRAND_DOMAIN = "khosrowan.ir"
+    BRAND_PRODUCT = "khvarenah"
+    FULL_HOST = "vpn." + BRAND_DOMAIN
+
     def setUp(self):
         self.p = VlessProfile(
             uuid="123e4567-e89b-12d3-a456-426614174000",
-            address="test.sub.workers.dev", name="t",
+            address=self.FULL_HOST, name=self.BRAND_PRODUCT,
         )
 
     def test_share_link_shape(self):
         link = self.p.share_link()
         self.assertTrue(link.startswith("vless://"))
-        self.assertIn("@test.sub.workers.dev:443", link)
+        self.assertIn(f"@{self.FULL_HOST}:443", link)
         self.assertIn("encryption=none", link)
+
+    def test_advertises_both_brands(self):
+        """The generated config must advertise both the Khosrowan domain and
+        the Khvarenah product brand."""
+        link = self.p.share_link()
+        self.assertIn("khosrowan.ir", link)
+        self.assertIn("khvarenah", link)
+        self.assertIn(f"#{self.BRAND_PRODUCT}", link)
 
     def test_encryption_none_present(self):
         self.assertIn("encryption=none", self.p.share_link())
 
     def test_xray_encryption_none(self):
         self.assertIn('"encryption": "none"', self.p.xray_client_json())
+
+    def test_xray_uses_khosrowan_domain(self):
+        xray = self.p.xray_client_json()
+        self.assertIn("khosrowan.ir", xray)
+        self.assertIn(f"\"address\": \"{self.FULL_HOST}\"", xray)
+        self.assertIn(f"\"serverName\": \"{self.FULL_HOST}\"", xray)
 
 
 if __name__ == "__main__":
