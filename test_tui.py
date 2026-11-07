@@ -44,7 +44,8 @@ def test_autopilot_button_pushes_token_screen():
 
 def test_tui_constructs_all_screens():
     app = CfConsoleApp()
-    expected = {"welcome", "token", "account", "worker", "deploy", "config", "done"}
+    expected = {"welcome", "token", "account", "worker", "deploy", "config",
+                "cleanip", "done"}
     assert set(app.SCREENS.keys()) == expected
 
 

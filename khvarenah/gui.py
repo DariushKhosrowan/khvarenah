@@ -23,7 +23,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QFont, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QButtonGroup, QCheckBox, QFrame, QHBoxLayout, QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QPushButton, QProgressBar,
     QScrollArea, QSizePolicy, QStackedWidget, QTextEdit, QVBoxLayout,
     QWidget,
@@ -40,6 +40,10 @@ from khvarenah.deploy_wrangler import (
     deploy_wrangler, create_token_instructions, WranglerMissingError,
 )
 from khvarenah.cleanip import find_clean_ips, rewrite_vless_with_endpoint
+from khvarenah.updater import (
+    load_config, save_config, is_update_available, apply_update,
+)
+from khvarenah import store
 
 ASSETS = Path(__file__).resolve().parent / "assets"
 
@@ -228,6 +232,7 @@ class State:
     prof: VlessProfile | None = None
     autopilot = False
     subdomain = ""
+    auto_update = load_config().get("auto_update", True)
 
 
 STATE = State()
@@ -350,8 +355,32 @@ class WelcomePage(QWidget):
         btnrow.addStretch(1)
         clo.addLayout(btnrow)
 
+        # --- auto-update checkbox + status ---
+        updrow = QHBoxLayout()
+        updrow.setSpacing(8)
+        self.auto_upd = QCheckBox("✓ Auto-update from GitHub")
+        self.auto_upd.setChecked(STATE.auto_update)
+        self.auto_upd.toggled.connect(self._toggle_auto_update)
+        updrow.addWidget(self.auto_upd)
+        updrow.addStretch(1)
+        self.upd_status = QLabel("")
+        self.upd_status.setObjectName("body")
+        updrow.addWidget(self.upd_status)
+        clo.addLayout(updrow)
+
+        # --- saved-config memory summary ---
+        self.mem = QLabel(store.memory_summary())
+        self.mem.setObjectName("body")
+        self.mem.setWordWrap(True)
+        self.mem.setAlignment(Qt.AlignCenter)
+        clo.addWidget(self.mem)
+
         lo.addWidget(card)
         lo.addStretch(1)
+
+    def _toggle_auto_update(self, on: bool):
+        STATE.auto_update = bool(on)
+        save_config({"auto_update": STATE.auto_update})
 
     def _autopilot(self):
         STATE.autopilot = True
@@ -418,6 +447,7 @@ class TokenPage(QWidget):
             self._set_err(tr("token.empty").replace("[red]", "").replace("[/]", ""))
             return
         STATE.token = tok
+        store.save_token(tok)
         self._set_err("")
 
         self.verify_btn.setEnabled(False)
@@ -706,7 +736,9 @@ class DeployPage(QWidget):
             self.copy_err_btn.setVisible(False)
             STATE.host = res.host
             self.status.setText(f"✓ Deployed — host: {res.host}")
-            self.win.goto("config")
+            store.remember_vless(
+                VlessProfile(uuid=STATE.uuid, address=res.host, name=STATE.name))
+            self.win.goto("cleanip" if STATE.autopilot else "config")
 
         def fail(msg):
             self.pb.setVisible(False)
@@ -778,8 +810,10 @@ class ConfigPage(QWidget):
         lo.addStretch(1)
 
     def on_enter(self):
-        STATE.prof = VlessProfile(uuid=STATE.uuid, address=STATE.host,
-                                  name=STATE.name)
+        if STATE.prof is None:
+            STATE.prof = VlessProfile(uuid=STATE.uuid, address=STATE.host,
+                                      name=STATE.name)
+            store.remember_vless(STATE.prof)
         self.link.setText(STATE.prof.share_link())
         self.copied.setText("")
         if STATE.autopilot:
@@ -891,7 +925,13 @@ class CleanIPPage(QWidget):
 
         self.results = QListWidget()
         self.results.setVisible(False)
+        self.results.itemDoubleClicked.connect(self._use_endpoint)
         clo.addWidget(self.results)
+
+        self.hint = QLabel("")
+        self.hint.setObjectName("body")
+        self.hint.setVisible(False)
+        clo.addWidget(self.hint)
 
         btnrow = QHBoxLayout()
         back = QPushButton("Back to Done")
@@ -921,6 +961,25 @@ class CleanIPPage(QWidget):
             self.status.setText("")
             self.scan_btn.setEnabled(True)
         self.results.setVisible(False)
+        if STATE.autopilot and STATE.prof is not None and not getattr(self, "_scanned", False):
+            self._scanned = True
+            self._scan()
+
+    def _use_endpoint(self, item):
+        """Switch the active config to the double-clicked clean IP."""
+        ep = item.text().strip()
+        if not ep or ":" not in ep:
+            return
+        host, _, port = ep.rpartition(":")
+        STATE.prof = VlessProfile(
+            uuid=STATE.uuid, address=host,
+            port=int(port) if port.isdigit() else 443,
+            name=STATE.name + " (clean IP)",
+        )
+        store.remember_vless(STATE.prof, clean_ip=True)
+        QApplication.clipboard().setText(STATE.prof.share_link())
+        self.status.setText(f"✓ Using {ep} — link copied; continue to Config to copy again.")
+        self.win.goto("config")
 
     def _scan(self):
         if STATE.prof is None:
@@ -943,13 +1002,35 @@ class CleanIPPage(QWidget):
                 self.status.setObjectName("err")
                 self.status.setStyleSheet("")
                 self.status.setText(f"\u2717 {res.message}")
+                if STATE.autopilot:
+                    # fall back to the normal (workers.dev) config
+                    self.win.goto("config")
                 return
             self.status.setText(f"✓ {res.message}")
             self.results.clear()
-            for ep in res.endpoints[:5]:
+            for ep in res.endpoints[:10]:
                 item = QListWidgetItem(ep)
                 self.results.addItem(item)
             self.results.setVisible(True)
+            self.hint.setVisible(True)
+            self.hint.setText("Double-click any IP to switch to it — best IP is "
+                              "already copied to your clipboard and in memory.")
+            if res.endpoints:
+                host, _, port = res.endpoints[0].rpartition(":")
+                STATE.prof = VlessProfile(
+                    uuid=STATE.uuid, address=host,
+                    port=int(port) if port.isdigit() else 443,
+                    name=STATE.name + " (clean IP)",
+                )
+                store.remember_vless(STATE.prof, clean_ip=True)
+                QApplication.clipboard().setText(STATE.prof.share_link())
+                if STATE.autopilot:
+                    self.win.goto("config")
+                else:
+                    Path("clean-configs.txt").write_text(
+                        "\n\n".join(
+                            f"# {ep}\n{rewrite_vless_with_endpoint(link, ep)}"
+                            for ep in res.endpoints[:5]) + "\n")
 
         def fail(msg):
             self.pb.setVisible(False)
@@ -1003,6 +1084,34 @@ class KhvarenahWindow(QMainWindow):
         self._build_stepper()
 
         self.goto("welcome")
+
+        if STATE.auto_update:
+            self._start_self_update_check()
+
+    # ---- self-update (background) ----
+
+    def _start_self_update_check(self):
+        """Check GitHub for a newer release; if found and auto-update is on,
+        apply it in the background.  A restart is required to use the new code."""
+        def work():
+            return apply_update() if is_update_available()[0] else (False, "Up to date.")
+
+        def ok(res):
+            done, msg = res
+            if done:
+                page = self._pages.get("welcome")
+                if hasattr(page, "upd_status"):
+                    page.upd_status.setText(f"🔁 {msg}")
+
+        def fail(msg):
+            page = self._pages.get("welcome")
+            if hasattr(page, "upd_status"):
+                page.upd_status.setText(f"⚠ update check: {msg}")
+
+        self._upd_thread = TaskThread(work, self)
+        self._upd_thread.succeeded.connect(ok)
+        self._upd_thread.failed.connect(fail)
+        self._upd_thread.start()
 
     # ---- UI construction ----
 

@@ -10,7 +10,7 @@ VPN.  Walks the user 0 → 100:
   7. Done + test guidance
 
 Autopilot: paste the token once and it runs 2→6 for you (picks an account,
-names the worker, deploys, and shows the vless link).
+names the worker, deploys, finds a clean IP, and shows a working vless link).
 
 Run:  python -m khvarenah.tui   (or: khvarenah)
 """
@@ -42,6 +42,7 @@ from khvarenah.deploy_wrangler import (deploy_wrangler,  # noqa: E402
 from khvarenah.cleanip import find_clean_ips, rewrite_vless_with_endpoint  # noqa: E402
 from khvarenah._nav import BackMixin  # noqa: E402
 from khvarenah.banner import rich_banner  # noqa: E402
+from khvarenah import store  # noqa: E402
 
 try:
     import pyperclip
@@ -147,6 +148,7 @@ class TokenScreen(BackMixin):
             self.query_one("#err", Static).update(tr("token.empty"))
             return
         APP.token = tok
+        store.save_token(tok)
         errw = self.query_one("#err", Static)
         errw.update(tr("token.working"))
 
@@ -335,6 +337,10 @@ class CleanIPScreen(BackMixin):
         yield Static("", id="msg")
         yield Button(tr("cleanip.btn"), variant="primary", id="go")
 
+    def on_mount(self):
+        if APP.autopilot:
+            self.app.call_after_refresh(self._scan)
+
     def on_button_pressed(self, event):
         if event.button.id == "go":
             self._scan()
@@ -357,17 +363,32 @@ class CleanIPScreen(BackMixin):
             if not res.ok:
                 pb.update(progress=0)
                 msg.update(f"[red]✗ {res.message}[/]")
+                if APP.autopilot:
+                    self.app.call_after_refresh(self._finish)
                 return
             pb.update(progress=100)
+            eps = res.endpoints[:5]
             shown = "\n".join(
                 f"  {ep}\n  → {rewrite_vless_with_endpoint(link, ep)}"
-                for ep in res.endpoints[:5])
+                for ep in eps)
             msg.update(f"[green]✔ {res.message}[/]\n\n{shown}\n\n"
                        f"[yellow](all {len(res.endpoints)} saved to "
                        f"clean-ips.txt)[/]")
             Path("clean-ips.txt").write_text("\n".join(res.endpoints) + "\n")
+            if APP.autopilot and eps:
+                # autopilot: commit the working clean-IP link and finish
+                host, _, port = eps[0].rpartition(":")
+                APP.prof = VlessProfile(
+                    uuid=APP.uuid, address=host, port=int(port) if port.isdigit() else 443,
+                    name=APP.name + " (clean IP)",
+                )
+                store.remember_vless(APP.prof, clean_ip=True)
+                self.app.call_after_refresh(self._finish)
 
         run_in_thread(work, ok, lambda m: msg.update(m))
+
+    def _finish(self):
+        self.app.push_screen("done")
 
 
 class ConfigScreen(BackMixin):
@@ -385,13 +406,14 @@ class ConfigScreen(BackMixin):
 
     def on_mount(self):
         APP.prof = VlessProfile(uuid=APP.uuid, address=APP.host, name=APP.name)
+        store.remember_vless(APP.prof)
         self.query_one("#link", Static).update(APP.prof.share_link())
         if APP.autopilot:
             self.app.call_after_refresh(self._auto_continue)
 
     def _auto_continue(self):
         self._copy()
-        self.app.push_screen("done")
+        self.app.push_screen("cleanip")  # autopilot → find a clean IP
 
     def on_button_pressed(self, event):
         if event.button.id == "copy":
@@ -473,6 +495,7 @@ class CfConsoleApp(App):
         "worker": WorkerScreen,
         "deploy": DeployScreen,
         "config": ConfigScreen,
+        "cleanip": CleanIPScreen,
         "done": DoneScreen,
     }
 

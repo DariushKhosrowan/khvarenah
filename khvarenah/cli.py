@@ -6,6 +6,10 @@ Purpose: drive the whole zero→100 workflow from a terminal without the TUI:
     python cli.py config --token X --name NAME --uuid U [--address H] [--port N]
                          [--security tls|none] [--path P]
     python cli.py status --token X [--account A]
+    python cli.py upgrade            # self-update from GitHub
+    python cli.py clean --token X --name NAME --uuid U   # find clean IP
+    python cli.py autopilot --token X --name NAME   # deploy + find clean IP
+    python cli.py history            # list saved vless configs (and tokens)
     python cli.py version
 Exit codes: 0 ok, 1 user/validation error, 2 CF error (message printed).
 """
@@ -24,8 +28,11 @@ from khvarenah.vless import VlessProfile  # noqa: E402
 from khvarenah.deploy_wrangler import deploy_wrangler  # noqa: E402
 from khvarenah.cleanip import (find_clean_ips,  # noqa: E402
                                  rewrite_vless_with_endpoint)
+from khvarenah.updater import (current_version, is_update_available,  # noqa: E402
+                                apply_update)
+from khvarenah import store  # noqa: E402
 
-VERSION = "0.1.0"
+VERSION = current_version()
 
 
 def _token(arg: str) -> str:
@@ -33,10 +40,14 @@ def _token(arg: str) -> str:
         p = Path.home() / ".khvarenah" / "token"
         if p.exists():
             return p.read_text().strip()
+        saved = store.get_token()
+        if saved:
+            return saved
         print("No token provided. Pass --token <CF_API_TOKEN> or save it to ~/.khvarenah/token",
               file=sys.stderr)
         sys.exit(1)
-    return arg
+    store.save_token(arg.strip())
+    return arg.strip()
 
 
 def _print_dict(label: str, d: dict) -> None:
@@ -108,6 +119,7 @@ def cmd_deploy(a) -> int:
         print(f"  UUID: {uuid}")
         print(f"  worker host: {host}")
         prof = VlessProfile(uuid=uuid, address=host, name=a.name or name)
+        store.remember_vless(prof)
         print(f"  vless link:\n    {prof.share_link()}")
         return 0
     except CFError as e:
@@ -129,6 +141,7 @@ def cmd_config(a) -> int:
         uuid = a.uuid or ""
         prof = VlessProfile(uuid=uuid, address=address, port=a.port,
                             security=a.security, path=a.path, name=a.name or name)
+        store.remember_vless(prof)
         print("\n=== YOUR vless CONFIG ===")
         print("Share link:")
         print("  " + prof.share_link())
@@ -204,6 +217,104 @@ def cmd_scan(a) -> int:
         return 2
 
 
+def cmd_clean(a) -> int:
+    """Find a clean IP for a deployed worker, then emit a working vless link."""
+    tok = _token(a.token)
+    c = Config(tok)
+    try:
+        accs = c.list_accounts()
+        acc = (a.account or accs[0]["id"]) if accs else ""
+        name = wb.safe_worker_name(a.name)
+        sub = c.get_subdomain(acc) if acc else ""
+        default_host = f"{name}.{sub}.workers.dev" if sub else f"{name}.workers.dev"
+        address = a.address or default_host
+        uuid = a.uuid or ""
+        if not uuid:
+            print("[error] --uuid required to build the vless config for scanning.")
+            return 1
+        prof = VlessProfile(uuid=uuid, address=address, port=a.port,
+                            security=a.security, path=a.path, name=a.name or name)
+        link = prof.share_link()
+        print(f"Scanning for clean IPs against {address} …")
+        r = find_clean_ips(link, count=a.count, workers=a.workers,
+                           timeout_s=a.timeout, gentle=a.gentle, ports=a.ports,
+                           scan_timeout=a.scan_timeout)
+        if not r.ok:
+            print(f"[error] {r.message}")
+            return 2
+        top = max(1, getattr(a, "top", 5))
+        eps = r.endpoints[:top]
+        configs = []
+        for ep in eps:
+            working_link = rewrite_vless_with_endpoint(link, ep)
+            ip, _, port = ep.rpartition(":")
+            store.remember_vless(
+                VlessProfile(uuid=uuid, address=ip,
+                             port=int(port) if port.isdigit() else 443,
+                             name=(a.name or name) + " (clean IP)"),
+                clean_ip=True,
+            )
+            configs.append((ep, working_link))
+        best_ep, best_link = configs[0]
+        print(f"\n✓ Best clean IP: {best_ep}")
+        print(f"  Working vless link:\n    {best_link}")
+        if len(configs) > 1:
+            print(f"\nMore clean IPs ({len(configs)} total):")
+            for ep, link in configs[1:]:
+                print(f"  • {ep}\n    {link}")
+        Path("clean-ips.txt").write_text("\n".join(r.endpoints) + "\n")
+        Path("clean-configs.txt").write_text(
+            "\n\n".join(f"# {ep}\n{link}" for ep, link in configs) + "\n")
+        print(f"\nSaved endpoints → clean-ips.txt · {len(configs)} configs → clean-configs.txt")
+        return 0
+    except CFError as e:
+        print(f"[error] {e}")
+        print(f"[fix]   {e.fix}")
+        return 2
+
+
+def cmd_autopilot(a) -> int:
+    """Deploy, then find a clean IP and emit a working vless link."""
+    rc = cmd_deploy(a)
+    if rc != 0:
+        return rc
+    return cmd_clean(a)
+
+
+def cmd_upgrade(a) -> int:
+    """Check for / apply the latest GitHub release."""
+    print(f"Current version: {VERSION}")
+    ok, rel = is_update_available()
+    if not ok:
+        print("You're already on the latest version.")
+        return 0
+    print(f"Update available: {rel['tag']} — downloading & installing …")
+    done, msg = apply_update()
+    print(msg)
+    return 0 if done else 1
+
+
+def cmd_history(a) -> int:
+    """List saved vless configs (and tokens) from memory."""
+    entries = store.list_vless()
+    print(f"🧠 Saved vless configs: {len(entries)}")
+    for i, r in enumerate(entries, 1):
+        tag = "clean-IP" if r.get("clean_ip") else "workers.dev"
+        print(f"  {i}. {r.get('name') or r.get('address')} [{tag}] — "
+              f"{r.get('ts')}")
+        print(f"     {r.get('link')}")
+    tokens = store.stored_tokens()
+    if tokens:
+        show = getattr(a, "show_tokens", False)
+        print(f"\n🔑 Saved tokens: {len(tokens)}")
+        for label in tokens:
+            if show:
+                print(f"  • {label}: {tokens[label]['token']}")
+            else:
+                print(f"  • {label}: •••• (use --show-tokens to reveal)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="khvarenah",
                                 description="Khvarenah — Cloudflare-worker VLESS VPN console (headless)")
@@ -213,8 +324,15 @@ def build_parser() -> argparse.ArgumentParser:
                         ("deploy", "deploy worker + set UUID"),
                         ("config", "generate vless config/link"),
                         ("status", "list deployed workers"),
-                        ("scan", "find clean IPs via SenPaiScanner")]:
+                        ("scan", "find clean IPs via SenPaiScanner"),
+                        ("clean", "find a clean IP and emit a working vless link"),
+                        ("autopilot", "deploy then find a clean IP (full auto)"),
+                        ("upgrade", "self-update from the latest GitHub release"),
+                        ("history", "list saved vless configs and tokens")]:
         sp = sub.add_parser(name, help=help_)
+        if name == "history":
+            sp.add_argument("--show-tokens", action="store_true",
+                            help="reveal stored API tokens")
         sp.add_argument("--token")
         sp.add_argument("--account")
         sp.add_argument("--worker")
@@ -244,7 +362,9 @@ def main(argv=None) -> int:
         return 0
     fn = {"check": cmd_check, "deploy": cmd_deploy,
           "config": cmd_config, "status": cmd_status,
-          "scan": cmd_scan}[args.cmd]
+          "scan": cmd_scan, "clean": cmd_clean,
+          "autopilot": cmd_autopilot, "upgrade": cmd_upgrade,
+          "history": cmd_history}[args.cmd]
     return fn(args)
 
 

@@ -26,6 +26,12 @@ def entrypoint() -> int:
         from .tui import main as tui_main
         tui_main()
         return 0
+    # Top-level CLI subcommands (so `khvarenah upgrade`, `khvarenah scan`, …)
+    # work directly, not just behind the `cli` prefix.
+    _CMDS = {"check", "deploy", "config", "status", "scan",
+             "clean", "autopilot", "upgrade", "history"}
+    if args and args[0] in _CMDS:
+        return cli_main(args)
     # Top-level --version / -h route to the CLI parser without launching a UI
     if args and args[0] in ("--version", "-V"):
         return cli_main(["--version"])
