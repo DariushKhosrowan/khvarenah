@@ -10,7 +10,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-VERSION="0.1.0"
+# Version is read from pyproject.toml so release assets always match the tag.
+VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
+[ -n "$VERSION" ] || VERSION="0.1.0"
 ARCH="amd64"
 VENV=".venv"
 PY="$VENV/bin/python"
