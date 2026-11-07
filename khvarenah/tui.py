@@ -9,7 +9,7 @@ VPN.  Walks the user 0 → 100:
   6. Get your vless config (press `c` to copy to clipboard)
   7. Done + test guidance
 
-Run:  python -m khvarenah.tui   (or: run.py)
+Run:  python -m khvarenah.tui   (or: khvarenah)
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from textual.widgets import (Button, Input, Label, ListItem, ListView, Markdown,
                              ProgressBar, Static)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from khvarenah.i18n import tr, set_lang  # noqa: E402
 from khvarenah.cf_api import Config, CFError  # noqa: E402
 from khvarenah.worker_bundle import (find_worker_js, safe_worker_name,  # noqa: E402
                                        generate_uuid, validate_worker_js)
@@ -43,7 +44,17 @@ try:
 except Exception:  # pragma: no cover
     pyperclip = None
 
-STEPS = ["Welcome", "Token", "Account", "Worker", "Deploy", "Config", "Done"]
+STEPS_KEYS = ["welcome", "token", "account", "worker", "deploy", "config", "done"]
+
+
+def _steps() -> list:
+    return [
+        tr("welcome.title"), tr("token.title"), tr("account.title"), tr("worker.title"),
+        tr("deploy.title"), tr("config.title"), tr("done.title"),
+    ]
+
+
+STEPS = _steps()
 
 
 def run_in_thread(fn, on_success, on_error):
@@ -82,17 +93,10 @@ class WelcomeScreen(BackMixin):
     def compose(self) -> ComposeResult:
         yield Static(rich_banner(54), id="logo")
         yield Markdown(
-            "# Khvarenah (خوَرنه)\n\n"
-            "**The ancient Persian royal glory.** A **0 → 100** wizard that creates "
-            "and controls a Cloudflare-Worker VLESS proxy right from your terminal.\n\n"
-            "**What you'll get**\n"
-            "- a deployed `worker` reachable at `https://<name>.<subdomain>.workers.dev`\n"
-            "- a ready-to-use `vless://…` config copied to your clipboard\n"
-            "- friendly error explanations and fixes at every step\n\n"
-            "**Steps**: {}\n\n"
-            "> Press Enter to begin.".format(" → ".join(STEPS))
+            tr("welcome.body", steps=" → ".join(_steps())),
+            id="welcome_md",
         )
-        yield Button("Start", variant="primary", id="start")
+        yield Button(tr("welcome.start"), variant="primary", id="start")
 
     def on_button_pressed(self, event):
         if event.button.id == "start":
@@ -103,15 +107,20 @@ class TokenScreen(BackMixin):
     BINDINGS = [Binding("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Label(f"Step 2/{len(STEPS)} — Cloudflare API token", id="step")
+        yield Label(tr("step", n=2, total=len(STEPS), name=tr("token.title")), id="step")
         yield Markdown(create_token_instructions())
-        yield Input(placeholder="paste API token", password=True, id="tok")
-        yield Button("Verify & continue", variant="primary", id="go")
+        yield Input(placeholder=tr("token.placeholder"), password=True, id="tok")
+        yield Horizontal(
+            Button(tr("token.verify"), variant="primary", id="go"),
+            Button(tr("back"), id="back"),
+        )
         yield Static("", id="err")
 
     def on_button_pressed(self, event):
         if event.button.id == "go":
             self._verify()
+        elif event.button.id == "back":
+            self.app.pop_screen()
 
     def on_input_submitted(self, event):
         if event.input.id == "tok":
@@ -120,11 +129,11 @@ class TokenScreen(BackMixin):
     def _verify(self):
         tok = self.query_one("#tok", Input).value.strip()
         if not tok:
-            self.query_one("#err", Static).update("[red]Token cannot be empty[/]")
+            self.query_one("#err", Static).update(tr("token.empty"))
             return
         APP.token = tok
         errw = self.query_one("#err", Static)
-        errw.update("verifying…")
+        errw.update(tr("token.working"))
 
         def fetch():
             c = Config(tok, timeout=30)
@@ -135,9 +144,7 @@ class TokenScreen(BackMixin):
 
     def _ok(self, accounts):
         if not accounts:
-            self.query_one("#err", Static).update(
-                "[red]No accounts are visible with this token.[/]\n"
-                "[yellow]Fix: recreate the token and include Account-Settings:Read.[/]")
+            self.query_one("#err", Static).update(tr("token.none"))
             return
         APP.accounts = accounts
         self.app.push_screen("account")
@@ -147,9 +154,9 @@ class AccountScreen(BackMixin):
     BINDINGS = [Binding("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Label(f"Step 3/{len(STEPS)} — pick account", id="step")
+        yield Label(tr("step", n=3, total=len(STEPS), name=tr("account.title")), id="step")
         yield ListView(id="accs")
-        yield Button("Continue", variant="primary", id="go", disabled=True)
+        yield Button(tr("account.continue"), variant="primary", id="go", disabled=True)
 
     def on_mount(self):
         lv = self.query_one("#accs", ListView)
@@ -173,18 +180,17 @@ class WorkerScreen(BackMixin):
     BINDINGS = [Binding("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Label(f"Step 4/{len(STEPS)} — worker name + UUID", id="step")
-        yield Markdown(
-            "Give the worker a **name** (lowercase letters, digits, hyphens; "
-            "max 64 chars). A fresh **UUID** is generated automatically — you can "
-            "keep it or paste your own."
-        )
+        yield Label(tr("step", n=4, total=len(STEPS), name=tr("worker.title")), id="step")
+        yield Markdown(tr("worker.body"))
         yield Horizontal(
-            Input(placeholder="worker name (e.g. my-vpn)", id="nm"),
-            Input(placeholder="UUID (auto)", id="uv"),
+            Input(placeholder=tr("worker.name_ph"), id="nm"),
+            Input(placeholder=tr("worker.uuid_ph"), id="uv"),
         )
         yield Static("worker bundle: " + str(APP.worker_path or "auto-detect"), id="wp")
-        yield Button("Continue", variant="primary", id="go")
+        yield Horizontal(
+            Button(tr("worker.continue"), variant="primary", id="go"),
+            Button(tr("back"), id="back"),
+        )
 
     def on_mount(self):
         self.query_one("#nm", Input).value = APP.name or "vpn-edge"
@@ -198,27 +204,34 @@ class WorkerScreen(BackMixin):
             APP.name = safe_worker_name(self.query_one("#nm", Input).value)
             APP.uuid = self.query_one("#uv", Input).value.strip() or generate_uuid()
             self.app.push_screen("deploy")
+        elif event.button.id == "back":
+            self.app.pop_screen()
 
 
 class DeployScreen(BackMixin):
     BINDINGS = [Binding("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Label(f"Step 5/{len(STEPS)} — deploy", id="step")
-        yield Markdown("Uploading the worker and setting its UUID.")
+        yield Label(tr("step", n=5, total=len(STEPS), name=tr("deploy.title")), id="step")
+        yield Markdown(tr("deploy.body"))
         yield ProgressBar(total=100, show_percentage=True, id="pb")
         yield Static("", id="msg")
-        yield Button("Deploy now", variant="primary", id="go")
+        yield Horizontal(
+            Button(tr("deploy.btn"), variant="primary", id="go"),
+            Button(tr("back"), id="back"),
+        )
 
     def on_button_pressed(self, event):
         if event.button.id == "go":
             self._deploy()
+        elif event.button.id == "back":
+            self.app.pop_screen()
 
     def _deploy(self):
         pb = self.query_one("#pb", ProgressBar)
         msg = self.query_one("#msg", Static)
         pb.update(progress=5)
-        msg.update("starting deploy…")
+        msg.update(tr("deploy.starting"))
         wp = APP.worker_path or find_worker_js()
         if not wp:
             msg.update("[red]No worker bundle found. Place the edgetunnel _worker.js "
@@ -241,7 +254,7 @@ class DeployScreen(BackMixin):
                 return
             APP.host = res.host
             pb.update(progress=100)
-            msg.update(f"[green]✔ Deployed. host: {res.host}[/]")
+            msg.update(tr("deploy.done", host=res.host))
             self.app.push_screen("config")
 
         run_in_thread(work, ok, lambda m: msg.update(m))
@@ -251,17 +264,11 @@ class CleanIPScreen(BackMixin):
     BINDINGS = [Binding("escape", "back", "Back")]
 
     def compose(self) -> ComposeResult:
-        yield Label("Find clean Cloudflare IPs (SenPaiScanner)", id="step")
-        yield Markdown(
-            "This runs SenPaiScanner to probe Cloudflare IPs and validate the "
-            "best ones through your deployed worker. It can take a minute or "
-            "two (longer in gentle mode).\n\n"
-            "When it finishes, you can copy a rewritten `vless://…` link that "
-            "points at a clean endpoint."
-        )
+        yield Label(tr("cleanip.title"), id="step")
+        yield Markdown(tr("cleanip.body"))
         yield ProgressBar(total=100, show_percentage=True, id="pb")
         yield Static("", id="msg")
-        yield Button("Start scan", variant="primary", id="go")
+        yield Button(tr("cleanip.btn"), variant="primary", id="go")
 
     def on_button_pressed(self, event):
         if event.button.id == "go":
@@ -305,11 +312,11 @@ class ConfigScreen(BackMixin):
     ]
 
     def compose(self) -> ComposeResult:
-        yield Label(f"Step 6/{len(STEPS)} — your vless config", id="step")
-        yield Markdown("Press **c** (or the button) to copy the share link.")
+        yield Label(tr("step", n=6, total=len(STEPS), name=tr("config.title")), id="step")
+        yield Markdown(tr("config.body"))
         yield Static("", id="link")
         yield Static("", id="copied")
-        yield Button("Copy to clipboard", variant="primary", id="copy")
+        yield Button(tr("config.copy"), variant="primary", id="copy")
 
     def on_mount(self):
         APP.prof = VlessProfile(uuid=APP.uuid, address=APP.host, name=APP.name)
@@ -331,7 +338,7 @@ class ConfigScreen(BackMixin):
                 pyperclip.copy(link)
             except Exception:  # noqa: BLE001
                 pass
-        self.query_one("#copied", Static).update("[green]✔ Copied to clipboard[/]")
+        self.query_one("#copied", Static).update(tr("config.copied"))
 
 
 class DoneScreen(BackMixin):
@@ -339,7 +346,7 @@ class DoneScreen(BackMixin):
 
     def compose(self) -> ComposeResult:
         link = APP.prof.share_link() if APP.prof else ""
-        yield Label(f"Step 7/{len(STEPS)} — done", id="step")
+        yield Label(tr("step", n=7, total=len(STEPS), name=tr("done.title")), id="step")
         yield Markdown(
             "**Your worker is deployed.**\n\n"
             "- Host: `{host}`\n"
@@ -351,7 +358,7 @@ class DoneScreen(BackMixin):
             "curl --socks5-hostname 127.0.0.1:10808 https://www.google.com).\n\n"
             "> Press Esc to quit."
         ).format(host=APP.host, uuid=APP.uuid, link=link)
-        yield Button("Copy vless link", variant="primary", id="copy")
+        yield Button(tr("done.copy"), variant="primary", id="copy")
 
     def on_button_pressed(self, event):
         if event.button.id == "copy" and APP.prof is not None:
@@ -365,8 +372,8 @@ class DoneScreen(BackMixin):
 
 
 class CfConsoleApp(App):
-    TITLE = "Cloudflare-Worker VPN Console"
-    SUB_TITLE = "zero → 100"
+    TITLE = tr("app.title")
+    SUB_TITLE = tr("app.subtitle")
     CSS = """
     Screen { padding: 1 2; }
     #step { color: $accent; text-style: bold; margin-bottom: 1; }
@@ -392,6 +399,7 @@ class CfConsoleApp(App):
 
 
 def main():
+    set_lang(sys.argv[1] if len(sys.argv) > 1 else "auto")
     CfConsoleApp().run()
 
 

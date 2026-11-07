@@ -1,0 +1,2 @@
+User-agent: *
+Allow: /Sitemap: https://dariushkhosrowan.github.io/cf-console/sitemap.xml

@@ -4,5 +4,6 @@ __pycache__/
 .venv/
 dist/
 build/
+*.deb
 SenPaiScannerResult-*.txt
 client-*.json

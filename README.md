@@ -39,12 +39,41 @@ Create and control a Cloudflare-Worker VLESS VPN — from zero to 100, entirely 
 
 ## 🚀 Quick install
 
-> Requires **Python 3.10+**. Installing adds the `khvarenah` command to your PATH.
+### For non-programmers (recommended)
+
+Install the **.deb** (Linux) or **.exe** (Windows) from
+[GitHub Releases](https://github.com/DariushKhosrowan/cf-console/releases) —
+both bundle Python, so nothing else is needed.
+
+**Linux** — one command (no git, no pip, no coding):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash
+```
+
+…or download the `.deb` and run:
+
+```bash
+sudo apt install ./khvarenah_*.deb
+```
+
+Then just run `khvarenah` from any terminal.
+
+**Windows** — download `khvarenah.exe` and double-click it.
+
+### For developers
+
+> Requires **Python 3.10+**. The `install.sh` script creates a venv for you
+> (this avoids the PEP 668 "externally-managed environment" error on modern
+> Ubuntu/Debian). Installing adds the `khvarenah` command to your PATH.
 
 ```bash
 git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
-pip install -e .          # or: ./install.sh (creates a venv and installs)
+./install.sh                # creates .venv, installs, and launches the TUI
+# or, if you know what you're doing:
+python3 -m venv .venv
+.venv/bin/pip install -e .
 ```
 
 Then run it from anywhere:
@@ -54,14 +83,15 @@ khvarenah                  # launch the interactive TUI wizard (golden emblem we
 khvarenah cli --help       # headless CLI
 ```
 
-### Windows
+### Windows (developer)
 
 ```bat
 git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
-pip install -e .
-khvarenah
-khvarenah cli --help
+python -m venv .venv
+.venv\Scripts\pip install -e .
+.venv\Scripts\khvarenah
+.venv\Scripts\khvarenah cli --help
 ```
 
 ### Prerequisites for deploying

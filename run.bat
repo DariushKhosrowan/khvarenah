@@ -1,26 +1,16 @@
 @echo off
-rem Cloudflare-worker VPN console — Windows launcher.
-rem Double-click or run from cmd/PowerShell. Creates .venv on first run.
-setlocal
+REM Khvarenah Windows launcher — creates a venv, installs, and runs.
+REM Usage: run.bat [args...]
+
 cd /d "%~dp0"
 
 if not exist ".venv\Scripts\python.exe" (
-    echo Creating virtualenv (first run)...
+    echo Creating virtual environment...
     python -m venv .venv
-    if errorlevel 1 (
-        echo [ERROR] Could not create .venv. Install Python 3.10+ and ensure 'python' is on PATH.
-        pause
-        exit /b 1
-    )
-    .venv\Scripts\python.exe -m pip install --upgrade pip
-    .venv\Scripts\python.exe -m pip install textual requests pyperclip
-    if errorlevel 1 (
-        echo [ERROR] Dependency install failed. Check your network.
-        pause
-        exit /b 1
-    )
 )
 
-.venv\Scripts\python.exe run.py %*
-set RC=%ERRORLEVEL%
-exit /b %RC%
+echo Installing Khvarenah...
+.venv\Scripts\pip install --quiet -e .
+if errorlevel 1 exit /b 1
+
+.venv\Scripts\khvarenah %*

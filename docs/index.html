@@ -3,18 +3,51 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>cf-console — Cloudflare-Worker VPN Console</title>
-<meta name="description" content="cf-console is a cross-platform terminal console that creates and controls a Cloudflare Workers VLESS proxy from zero to 100 — deploy a worker and get a ready-to-copy vless:// config, with friendly error explanations.">
-<meta name="keywords" content="cloudflare worker, vless, vpn, v2ray, xray, workers.dev, console, cli, tui, linux, windows, edgetunnel">
+<title>Khvarenah — Cloudflare Worker VLESS VPN Console (خوَرنه)</title>
+<meta name="description" content="Khvarenah (خوَرنه) is the free, open-source terminal console that creates and controls a Cloudflare Worker VLESS VPN from zero to 100 — verify token, deploy worker, get a ready-to-copy vless:// config. Cross-platform Linux & Windows. No dashboard maze, friendly error explanations.">
+<meta name="keywords" content="khvarenah, cloudflare worker vless, cloudflare vless vpn, vless console, v2ray, xray, workers.dev, edgetunnel, vpn terminal, cloudflare worker vpn, free vpn, iran vpn, سامانه vless, خوَرنه">
 <meta name="author" content="Dariush Khosrowan">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<link rel="canonical" href="https://dariushkhosrowan.github.io/cf-console/">
+<link rel="sitemap" type="application/xml" href="sitemap.xml">
+
+<!-- Open Graph -->
 <meta property="og:type" content="website">
-<meta property="og:title" content="cf-console — Cloudflare-Worker VPN Console">
-<meta property="og:description" content="Create and control a Cloudflare-Worker VLESS VPN from zero to 100 — entirely from your terminal.">
+<meta property="og:title" content="Khvarenah — Cloudflare Worker VLESS VPN Console">
+<meta property="og:description" content="Free, open-source terminal console that deploys a Cloudflare Worker VLESS proxy from zero to 100. Cross-platform, friendly errors, ready-to-copy vless:// config.">
 <meta property="og:url" content="https://dariushkhosrowan.github.io/cf-console/">
-<meta property="og:site_name" content="cf-console">
+<meta property="og:site_name" content="Khvarenah">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="fa_IR">
+
+<!-- Twitter -->
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="cf-console — Cloudflare-Worker VPN Console">
-<meta name="twitter:description" content="Cross-platform terminal console for Cloudflare Workers VLESS VPN — zero to 100.">
+<meta name="twitter:title" content="Khvarenah — Cloudflare Worker VLESS VPN Console">
+<meta name="twitter:description" content="Free, open-source terminal console that deploys a Cloudflare Worker VLESS proxy from zero to 100.">
+
+<!-- Schema.org structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Khvarenah",
+  "alternateName": "خوَرنه",
+  "description": "Open-source terminal console that creates and controls a Cloudflare Worker VLESS VPN from zero to 100.",
+  "url": "https://dariushkhosrowan.github.io/cf-console/",
+  "applicationCategory": "NetworkApplication",
+  "operatingSystem": "Linux, Windows",
+  "softwareVersion": "0.1.0",
+  "license": "https://github.com/DariushKhosrowan/cf-console/blob/main/LICENSE",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "creator": {
+    "@type": "Organization",
+    "name": "Khosrowan",
+    "url": "https://khosrowan.ir",
+    "sameAs": ["https://t.me/Khosrowan_ir"]
+  }
+}
+</script>
+
 <style>
   :root {
     --bg: #0b1120;
@@ -24,6 +57,7 @@
     --muted: #94a3b8;
     --accent: #38bdf8;
     --accent2: #818cf8;
+    --gold: #e6b940;
     --code-bg: #0d1526;
     --border: #233152;
   }
@@ -37,79 +71,50 @@
   }
   .wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
   header { text-align: center; padding: 48px 0 32px; }
-  .logo {
-    font-size: 56px; line-height: 1; margin-bottom: 12px;
-    filter: drop-shadow(0 0 18px rgba(56,189,248,.35));
-  }
   h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -.5px; }
-  h1 .accent { background: linear-gradient(90deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .tagline { color: var(--muted); font-size: 1.1rem; max-width: 640px; margin: 12px auto 0; }
+  h1 .accent { background: linear-gradient(90deg, var(--gold), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .tagline { color: var(--muted); font-size: 1.1rem; max-width: 700px; margin: 12px auto 0; }
   .badges { margin-top: 18px; }
   .badges img { height: 22px; margin: 0 3px; border-radius: 4px; }
-
   .cta { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .btn {
-    display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600;
-    text-decoration: none; font-size: .95rem; transition: transform .12s ease, box-shadow .12s ease;
-  }
-  .btn-primary { background: linear-gradient(90deg, var(--accent), var(--accent2)); color: #0b1120; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600; text-decoration: none; font-size: .95rem; transition: transform .12s ease, box-shadow .12s ease; }
+  .btn-primary { background: linear-gradient(90deg, var(--gold), var(--accent2)); color: #0b1120; }
   .btn-ghost { border: 1px solid var(--border); color: var(--text); background: rgba(21,31,56,.6); }
   .btn:hover { transform: translateY(-2px); }
-  .btn-primary:hover { box-shadow: 0 6px 24px rgba(56,189,248,.35); }
-
+  .btn-primary:hover { box-shadow: 0 6px 24px rgba(230,185,64,.35); }
   h2 { font-size: 1.5rem; margin: 48px 0 16px; color: #fff; }
-  h2 .acc { color: var(--accent); }
+  h2 .acc { color: var(--gold); }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
-  .card h3 { font-size: 1.05rem; margin-bottom: 8px; color: var(--accent); }
+  .card h3 { font-size: 1.05rem; margin-bottom: 8px; color: var(--gold); }
   .card p { color: var(--muted); font-size: .92rem; }
-
   .steps { list-style: none; counter-reset: step; }
-  .steps li {
-    counter-increment: step; padding: 12px 0 12px 48px; position: relative;
-    border-bottom: 1px solid var(--border); color: var(--text);
-  }
-  .steps li::before {
-    content: counter(step); position: absolute; left: 0; top: 14px;
-    width: 30px; height: 30px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    color: #0b1120; font-weight: 700; display: flex; align-items: center; justify-content: center;
-    font-size: .9rem;
-  }
+  .steps li { counter-increment: step; padding: 12px 0 12px 48px; position: relative; border-bottom: 1px solid var(--border); color: var(--text); }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 14px; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), var(--accent2)); color: #0b1120; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: .9rem; }
   .steps li:last-child { border-bottom: none; }
-
-  pre {
-    background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 18px; overflow-x: auto; font-size: .88rem; margin: 12px 0;
-    font-family: "SFMono-Regular", Consolas, "Roboto Mono", Menlo, monospace;
-  }
-  code { font-family: inherit; background: rgba(56,189,248,.12); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
+  pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; overflow-x: auto; font-size: .88rem; margin: 12px 0; font-family: "SFMono-Regular", Consolas, "Roboto Mono", Menlo, monospace; }
+  code { font-family: inherit; background: rgba(230,185,64,.12); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
   pre code { background: none; padding: 0; }
   .cmt { color: #64748b; }
-  .platform { font-weight: 700; color: var(--accent); }
-
+  .platform { font-weight: 700; color: var(--gold); }
   footer { text-align: center; margin-top: 56px; color: var(--muted); font-size: .85rem; }
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
-  @media (max-width: 640px) {
-    h1 { font-size: 1.8rem; }
-    .wrap { padding: 24px 16px; }
-  }
+  @media (max-width: 640px) { h1 { font-size: 1.8rem; } .wrap { padding: 24px 16px; } }
 </style>
 </head>
 <body>
 <div class="wrap">
 
   <header>
-    <div class="logo">⚡</div>
-    <h1>cf-<span class="accent">console</span></h1>
-    <p class="tagline">Create and control a <strong>Cloudflare-Worker VLESS VPN</strong> from zero to 100 — entirely from your terminal. Cross-platform, with friendly error explanations.</p>
-    <p style="margin-top:8px;color:var(--muted);font-size:.95rem"><strong style="color:var(--accent)">Khosrowan</strong> · <a href="https://khosrowan.ir" style="color:var(--accent);text-decoration:none">khosrowan.ir</a> · <a href="https://t.me/Khosrowan_ir" style="color:var(--accent);text-decoration:none">@Khosrowan_ir</a> on Telegram</p>
+    <h1>خوَرنه <span class="accent">Khvarenah</span></h1>
+    <p class="tagline">Create and control a <strong>Cloudflare Worker VLESS VPN</strong> from zero to 100 — entirely from your terminal. Cross-platform, with friendly error explanations.</p>
+    <p style="margin-top:8px;color:var(--muted);font-size:.95rem"><strong style="color:var(--gold)">Khosrowan</strong> · <a href="https://khosrowan.ir" style="color:var(--accent);text-decoration:none">khosrowan.ir</a> · <a href="https://t.me/Khosrowan_ir" style="color:var(--accent);text-decoration:none">@Khosrowan_ir</a> on Telegram</p>
     <div class="badges">
       <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
       <img src="https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-2ea44f" alt="Linux & Windows">
       <img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="MIT License">
+      <img src="https://img.shields.io/badge/Free-Open%20Source-2ea44f" alt="Free open source">
     </div>
     <div class="cta">
       <a class="btn btn-primary" href="https://github.com/DariushKhosrowan/cf-console">View on GitHub</a>
@@ -117,31 +122,41 @@
     </div>
   </header>
 
-  <h2>Why <span class="acc">cf-console</span>?</h2>
+  <h2>What is <span class="acc">Khvarenah</span>?</h2>
+  <p style="color:var(--muted);max-width:720px">Khvarenah (خوَرنه) is the Avestan word for <em>divine royal glory</em> — the sacred inner fire that lets one rise above every barrier. That is exactly what this tool does: it gives you the glory to reach over censorship walls. It is a free, open-source terminal console built for anyone who wants a personal Cloudflare Worker VLESS proxy without wrestling with dashboards, JSON, or raw APIs.</p>
+
+  <h2>Why <span class="acc">Khvarenah</span>?</h2>
   <div class="grid">
     <div class="card"><h3>🎛️ 0 → 100 wizard</h3><p>Token → account → deploy → config, all in one guided terminal flow. No dashboard maze.</p></div>
     <div class="card"><h3>🧠 Error understanding</h3><p>Every Cloudflare API and wrangler error becomes a plain-language problem + fix — never a raw stack trace.</p></div>
-    <div class="card"><h3>🐧🪟 Cross-platform</h3><p>Identical experience on Linux and Windows with native launchers.</p></div>
+    <div class="card"><h3>🐧🪟 Cross-platform</h3><p>Identical experience on Linux and Windows with native launchers, .deb and .exe.</p></div>
     <div class="card"><h3>📋 Ready-to-copy config</h3><p>Get your vless:// share link + xray client JSON, copied to your clipboard.</p></div>
     <div class="card"><h3>🌐 Censored-region ready</h3><p>Built-in clean-IP finder (SenPaiScanner) and a VPN-free local test harness.</p></div>
-    <div class="card"><h3>📦 Zero-fuss setup</h3><p>First run creates a venv and installs dependencies automatically.</p></div>
+    <div class="card"><h3>🔤 Multilingual & modern UI</h3><p>English / فارسی (Persian) interface with a polished, modern terminal theme.</p></div>
   </div>
 
   <h2>Install <span class="acc">in seconds</span></h2>
 
-  <p class="platform">🐧 Linux / macOS</p>
+  <p class="platform">🐧 Linux — one command (no coding, no pip)</p>
+  <pre><code>curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash</code></pre>
+  <p style="color:var(--muted);font-size:.9rem">…or download the <strong>.deb</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and run <code>sudo apt install ./khvarenah_*.deb</code>.</p>
+
+  <p class="platform">🪟 Windows — one click</p>
+  <p style="color:var(--muted);font-size:.9rem">Download <strong>khvarenah.exe</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and double-click it.</p>
+
+  <p class="platform">🐧 Advanced (developers)</p>
   <pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
-./cf-console.sh            <span class="cmt"># interactive TUI wizard</span>
-./cf-console.sh cli --help <span class="cmt"># headless CLI</span></code></pre>
+./install.sh                <span class="cmt"># creates venv, installs, launches TUI</span>
+./install.sh cli --help     <span class="cmt"># headless CLI</span></code></pre>
 
-  <p class="platform">🪟 Windows</p>
+  <p class="platform">🪟 Windows (developers)</p>
   <pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
-run.bat                     <span class="cmt">@ interactive TUI</span>
-run.bat cli --help          <span class="cmt">@ headless CLI</span></code></pre>
+run.bat                     <span class="cmt"># interactive TUI</span>
+run.bat cli --help          <span class="cmt"># headless CLI</span></code></pre>
 
-  <p style="color:var(--muted);font-size:.9rem">Requires Python 3.10+ and the <code>wrangler</code> CLI (<code>npm i -g wrangler</code>) for deploying.</p>
+  <p style="color:var(--muted);font-size:.9rem">The .deb and .exe bundle Python, so nothing else needs installing.</p>
 
   <h2>The wizard: <span class="acc">zero → 100</span></h2>
   <ol class="steps">
@@ -155,11 +170,11 @@ run.bat cli --help          <span class="cmt">@ headless CLI</span></code></pre>
   </ol>
 
   <h2>Headless <span class="acc">CLI</span></h2>
-  <pre><code>cf-console check   [--token T] [--worker W]
-cf-console deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
-cf-console config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
-cf-console status  [--token T] [--account A]
-cf-console scan    [--token T] [--name N] [--uuid U]</code></pre>
+  <pre><code>khvarenah check   [--token T] [--worker W]
+khvarenah deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
+khvarenah config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
+khvarenah status  [--token T] [--account A]
+khvarenah scan    [--token T] [--name N] [--uuid U]</code></pre>
 
   <footer>
     <p><strong>Khosrowan</strong> · a tool by <a href="https://khosrowan.ir">Khosrowan Team</a> — <a href="https://t.me/Khosrowan_ir">@Khosrowan_ir</a> on Telegram</p>
