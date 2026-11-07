@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   auto-release:
@@ -63,3 +64,14 @@ jobs:
           git tag "v${NEXT}"
           git push origin main
           git push origin "v${NEXT}"
+
+      # Tag pushes made with GITHUB_TOKEN do not re-trigger workflows (and the
+      # bump commit carries [skip ci]), so we explicitly dispatch the release
+      # build.  workflow_dispatch is a documented exception that works with the
+      # GITHUB_TOKEN, so release.yml runs with this exact tag.
+      - name: Dispatch release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT: ${{ steps.nextver.outputs.next }}
+        run: |
+          gh workflow run release.yml -f tag="v${NEXT}"
