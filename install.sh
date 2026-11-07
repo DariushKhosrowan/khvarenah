@@ -54,6 +54,26 @@ echo "  installing/updating Khvarenah + dependencies..."
 "${PIP}" install --quiet --upgrade pip >/dev/null
 "${PIP}" install --quiet "${SRC}" >/dev/null
 
+# 4. Link `khvarenah` onto PATH so the command works from any directory.
+echo "  linking 'khvarenah' onto PATH..."
+mkdir -p "${HOME}/.local/bin"
+if [[ ":$PATH:" == *":${HOME}/.local/bin:"* ]]; then
+  LNK_DIR="${HOME}/.local/bin"
+else
+  LNK_DIR="/usr/local/bin"
+fi
+if [ "${LNK_DIR}" = "/usr/local/bin" ] && [ ! -w /usr/local/bin ]; then
+  echo "  creating symlink with sudo (one-time)..."
+  sudo ln -sf "${CMD}" "${LNK_DIR}/khvarenah"
+else
+  ln -sf "${CMD}" "${LNK_DIR}/khvarenah"
+fi
+if command -v khvarenah >/dev/null 2>&1; then
+  echo "  ✓ 'khvarenah' is runnable: $(command -v khvarenah)"
+else
+  echo "  NOTE: ${LNK_DIR} isn't on your PATH. Add: export PATH=\"${LNK_DIR}:\$PATH\""
+fi
+
 echo "  installed. —"
 echo
 if [ $# -eq 0 ]; then
