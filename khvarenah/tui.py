@@ -348,16 +348,18 @@ class DoneScreen(BackMixin):
         link = APP.prof.share_link() if APP.prof else ""
         yield Label(tr("step", n=7, total=len(STEPS), name=tr("done.title")), id="step")
         yield Markdown(
-            "**Your worker is deployed.**\n\n"
-            "- Host: `{host}`\n"
-            "- UUID: `{uuid}`\n"
-            "- vless link (press `c` after up to copy):\n\n"
-            "```\n{link}\n```\n\n"
-            "**Test without a VPN:** run the `localtest` harness from the "
-            "cf-worker-proxy project (start-local-worker.sh → start-xray.sh → "
-            "curl --socks5-hostname 127.0.0.1:10808 https://www.google.com).\n\n"
-            "> Press Esc to quit."
-        ).format(host=APP.host, uuid=APP.uuid, link=link)
+            (
+                "**Your worker is deployed.**\n\n"
+                "- Host: `{host}`\n"
+                "- UUID: `{uuid}`\n"
+                "- vless link (press `c` after up to copy):\n\n"
+                "```\n{link}\n```\n\n"
+                "**Test without a VPN:** run the `localtest` harness from the "
+                "cf-worker-proxy project (start-local-worker.sh → start-xray.sh → "
+                "curl --socks5-hostname 127.0.0.1:10808 https://www.google.com).\n\n"
+                "> Press Esc to quit."
+            ).format(host=APP.host, uuid=APP.uuid, link=link)
+        )
         yield Button(tr("done.copy"), variant="primary", id="copy")
 
     def on_button_pressed(self, event):
