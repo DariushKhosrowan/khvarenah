@@ -57,6 +57,23 @@ fn known_code(code: i64) -> Option<(&'static str, &'static str)> {
     m.get(&code).copied()
 }
 
+/// `9109` on a 403 from an *account-scoped* endpoint (not the token verify
+/// endpoint) usually means the account itself is deactivated/suspended, not
+/// that the token string is wrong. Give the user the precise fix.
+fn explain_9109(status: u16, path_hint: &str) -> Option<(&'static str, &'static str)> {
+    let _ = path_hint;
+    if status == 403 {
+        Some((
+            "Account deactivated",
+            "Cloudflare reports this account's access as deactivated (9109 on a 403). \
+             The token itself verifies as active, but the account it is scoped to is \
+             suspended or the token lacks account-level scoping.",
+        ))
+    } else {
+        None
+    }
+}
+
 fn classify_status(status: u16) -> Option<(&'static str, &'static str)> {
     match status {
         400 => Some(("Bad request", "One of the fields is invalid. Verify the worker name (lowercase letters, numbers, hyphens) and re-check the script.")),
@@ -96,7 +113,17 @@ fn explain_response(status: u16, body: &Value, fallback: &str) -> CfError {
     }
 
     let (title, fix) = if let Some(c) = code {
-        if let Some(k) = known_code(c) {
+        if c == 9109 {
+            if let Some(k) = explain_9109(status, "") {
+                k
+            } else if let Some(k) = known_code(c) {
+                k
+            } else if let Some(k) = classify_status(status) {
+                k
+            } else {
+                ("Request failed", "Review the raw error below and adjust accordingly.")
+            }
+        } else if let Some(k) = known_code(c) {
             k
         } else if let Some(k) = classify_status(status) {
             k
@@ -344,5 +371,15 @@ mod tests {
         let e = explain_response(400, &body, "");
         assert_eq!(e.title, "Invalid API token");
         assert_eq!(e.code, Some(9109));
+    }
+
+    #[test]
+    fn explain_9109_on_403_calls_it_deactivated() {
+        let body = serde_json::json!({
+            "errors": [{ "code": 9109, "message": "User was deactivated" }]
+        });
+        let e = explain_response(403, &body, "");
+        assert_eq!(e.title, "Account deactivated");
+        assert_eq!(e.status, Some(403));
     }
 }
