@@ -1,0 +1,65 @@
+name: Auto-release (version bump + tag)
+
+# Release a new version automatically whenever an edit lands on `main`.
+# It bumps the patch version, commits it, and creates a `v*` tag.  Pushing
+# the tag triggers the `release.yml` workflow, which builds the .deb, .exe,
+# and pip wheel and publishes the GitHub Release.
+#
+# Guards:
+#   * Self-trigger loop: the bump commit is tagged `[skip ci]`, and this job
+#     exits early when the HEAD commit carries that marker.
+#   * Sanity: we refuse to bump when the working tree is not clean.
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  auto-release:
+    name: Auto-bump & tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Skip re-trigger (self-created bump commit)
+        run: |
+          MSG="$(git log -1 --format='%s')"
+          if [[ "$MSG" == *"[skip ci]"* ]]; then
+            echo "HEAD commit is our own bump — stopping."
+            exit 0
+          fi
+          echo "Proceeding: ${MSG}"
+
+      - name: Compute next patch version
+        id: nextver
+        run: |
+          VER="$(sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml | head -1)"
+          echo "current=${VER}"
+          IFS='.' read -r MAJ MIN PAT <<< "$VER"
+          PAT=$((PAT + 1))
+          NEXT="${MAJ}.${MIN}.${PAT}"
+          echo "next=${NEXT}" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Bump version in pyproject.toml and __init__.py
+        run: |
+          NEXT="${{ steps.nextver.outputs.next }}"
+          sed -i "s/^version = \".*\"/version = \"${NEXT}\"/" pyproject.toml
+          sed -i "s/^__version__ = \".*\"/__version__ = \"${NEXT}\"/" khvarenah/__init__.py
+          git diff --stat
+
+      - name: Commit bump + create tag + push
+        env:
+          NEXT: ${{ steps.nextver.outputs.next }}
+        run: |
+          git config user.name "Dariush Khosrowan"
+          git config user.email "dariush@khosrowan.ir"
+          git add pyproject.toml khvarenah/__init__.py
+          git commit -m "release(${NEXT}): auto-bump [skip ci]"
+          git tag "v${NEXT}"
+          git push origin main
+          git push origin "v${NEXT}"

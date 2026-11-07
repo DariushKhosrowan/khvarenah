@@ -28,8 +28,7 @@ from khvarenah.vless import VlessProfile  # noqa: E402
 from khvarenah.deploy_wrangler import deploy_wrangler  # noqa: E402
 from khvarenah.cleanip import (find_clean_ips,  # noqa: E402
                                  rewrite_vless_with_endpoint)
-from khvarenah.updater import (current_version, is_update_available,  # noqa: E402
-                                apply_update)
+from khvarenah.updater import (current_version, check_and_apply)  # noqa: E402
 from khvarenah import store  # noqa: E402
 from khvarenah.stealth import boundary_pause, enabled as stealth_enabled  # noqa: E402
 
@@ -365,12 +364,7 @@ def cmd_autopilot(a) -> int:
 def cmd_upgrade(a) -> int:
     """Check for / apply the latest GitHub release."""
     print(f"Current version: {VERSION}")
-    ok, rel = is_update_available()
-    if not ok:
-        print("You're already on the latest version.")
-        return 0
-    print(f"Update available: {rel['tag']} — downloading & installing …")
-    done, msg = apply_update()
+    done, msg = check_and_apply()
     print(msg)
     return 0 if done else 1
 

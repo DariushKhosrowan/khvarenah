@@ -43,7 +43,7 @@ from khvarenah.deploy_wrangler import (
 )
 from khvarenah.cleanip import find_clean_ips, rewrite_vless_with_endpoint
 from khvarenah.updater import (
-    load_config, save_config, is_update_available, apply_update,
+    load_config, save_config, check_and_apply,
 )
 from khvarenah import store
 
@@ -1336,7 +1336,7 @@ class KhvarenahWindow(QMainWindow):
         apply it in the background. A restart is required to use the new code."""
 
         def work():
-            return apply_update() if is_update_available()[0] else (False, "Up to date.")
+            return check_and_apply()
 
         def ok(res):
             done, msg = res

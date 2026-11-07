@@ -36,12 +36,35 @@ def test_release_workflow_triggers_on_release_tags():
 def test_release_workflow_builds_all_platforms_and_publishes():
     d = yaml.safe_load(WORKFLOW.read_text())
     jobs = d["jobs"]
-    assert {"build-deb", "build-exe", "release"} <= set(jobs), "missing jobs"
+    assert {"build-wheel", "build-deb", "build-exe", "release"} <= set(jobs), "missing jobs"
     release_job = jobs["release"]
-    assert set(release_job.get("needs", [])) == {"build-deb", "build-exe"}
+    assert set(release_job.get("needs", [])) == {"build-wheel", "build-deb", "build-exe"}
     names = [s.get("name", "") for s in release_job["steps"]]
     assert any("Publish release" in n for n in names)
     assert any("Generate checksums" in n for n in names)
+
+
+def test_release_workflow_builds_wheel():
+    d = yaml.safe_load(WORKFLOW.read_text())
+    wheel_job = d["jobs"]["build-wheel"]
+    names = [s.get("name", "") for s in wheel_job["steps"]]
+    assert any("Build wheel" in n for n in names)
+
+
+AUTORELEASE = Path(__file__).resolve().parent / ".github/workflows/auto-release.yml"
+
+
+def test_autorelease_workflow_exists_and_bumps():
+    assert AUTORELEASE.exists(), "auto-release.yml missing"
+    d = yaml.safe_load(AUTORELEASE.read_text())
+    on = d.get("on") or d.get(True)
+    assert on is not None
+    branches = on.get("push", {}).get("branches", [])
+    assert "main" in branches, "must trigger on push to main"
+    steps = [s.get("run", "") for s in d["jobs"]["auto-release"]["steps"]]
+    joined = "\n".join(steps)
+    assert "NEXT" in joined and "git tag" in joined, "must compute & push a version tag"
+    assert "skip ci" in joined, "must guard against self-trigger loops"
 
 
 def test_release_workflow_triggers_on_dispatch_with_tag_input():
