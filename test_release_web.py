@@ -1,4 +1,4 @@
-"""Tests for release/SEO artifacts: the Linux .deb build workflow and the
+"""Tests for release/SEO artifacts: the consolidated CI release workflow and the
 GitHub Pages SEO landing page (docs/index.html).
 
 These are the two files that carry the project's "easy install" and "SEO"
@@ -13,17 +13,17 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 
-WORKFLOW = ROOT / ".github" / "workflows" / "build-linux-deb.yml"
+WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
 INDEX = ROOT / "docs" / "index.html"
 
 
-# ---------- build-linux-deb.yml ----------
+# ---------- release.yml ----------
 
-def test_deb_workflow_exists():
-    assert WORKFLOW.exists(), "build-linux-deb.yml missing"
+def test_release_workflow_exists():
+    assert WORKFLOW.exists(), "release.yml missing"
 
 
-def test_deb_workflow_triggers_on_release_tags():
+def test_release_workflow_triggers_on_release_tags():
     d = yaml.safe_load(WORKFLOW.read_text())
     # YAML 1.1 parses the bare key `on` as a boolean True
     on = d.get("on") or d.get(True)
@@ -33,16 +33,26 @@ def test_deb_workflow_triggers_on_release_tags():
     assert any(str(t).startswith("v") for t in tags), "no v* tag trigger"
 
 
-def test_deb_workflow_builds_and_attaches():
+def test_release_workflow_builds_all_platforms_and_publishes():
     d = yaml.safe_load(WORKFLOW.read_text())
-    job = d["jobs"]["build-deb"]
-    assert job["runs-on"] == "ubuntu-latest"
-    names = [s.get("name", "") for s in job["steps"]]
-    assert any("Build .deb" in n for n in names)
-    assert any("Attach to release" in n for n in names)
+    jobs = d["jobs"]
+    assert {"build-deb", "build-exe", "release"} <= set(jobs), "missing jobs"
+    release_job = jobs["release"]
+    assert set(release_job.get("needs", [])) == {"build-deb", "build-exe"}
+    names = [s.get("name", "") for s in release_job["steps"]]
+    assert any("Publish release" in n for n in names)
+    assert any("Generate checksums" in n for n in names)
 
 
-def test_deb_workflow_has_no_invalid_yaml_1_1_key():
+def test_release_workflow_triggers_on_dispatch_with_tag_input():
+    d = yaml.safe_load(WORKFLOW.read_text())
+    on = d.get("on") or d.get(True)
+    dispatch = on.get("workflow_dispatch") or {}
+    inputs = dispatch.get("inputs") or {}
+    assert "tag" in inputs, "workflow_dispatch needs a tag input"
+
+
+def test_release_workflow_has_no_invalid_yaml_1_1_key():
     # The whole file must parse; only the `on` key may be the bool quirk.
     d = yaml.safe_load(WORKFLOW.read_text())
     assert True in d, "expected the YAML 1.1 `on` quirk to appear"

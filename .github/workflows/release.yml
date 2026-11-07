@@ -1,0 +1,160 @@
+name: Release (CI-built)
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish (manual dispatch)"
+        required: true
+        default: "v0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build-deb:
+    name: Build Linux .deb
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install system build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fakeroot dpkg-dev
+
+      - name: Create venv + install build deps
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install pyinstaller textual requests pyperclip pillow
+
+      - name: Build .deb (PyInstaller onefile)
+        run: bash build-deb.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: khvarenah-deb
+          path: build/khvarenah_*.deb
+          if-no-files-found: error
+
+  build-exe:
+    name: Build Windows .exe
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller textual requests pyperclip pillow
+
+      - name: Build one-file exe
+        run: |
+          pyinstaller --noconfirm --clean --onefile --windowed `
+            --name khvarenah `
+            --collect-all textual `
+            --add-data "khvarenah/assets/golden.png;khvarenah/assets" `
+            launcher.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: khvarenah-windows
+          path: dist/khvarenah.exe
+          if-no-files-found: error
+
+  release:
+    name: Assemble & publish release
+    needs: [build-deb, build-exe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve target release tag
+        id: tag
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ -n "${GITHUB_REF_NAME}" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="${{ inputs.tag }}"
+          fi
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate checksums + release body
+        id: assemble
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, subprocess
+          from pathlib import Path
+
+          d = Path("release-assets")
+          files = sorted(p for p in d.iterdir() if p.is_file())
+
+          sums = []
+          for f in files:
+              sums.append(f"{hashlib.sha256(f.read_bytes()).hexdigest()}  {f.name}")
+          (d / "SHA256SUMS.txt").write_text("\n".join(sums) + "\n")
+
+          sizes = {f.name: f.stat().st_size for f in files}
+          rows = []
+          for name in sorted(sizes):
+              line = next(l for l in sums if l.endswith("  " + name))
+              rows.append(f"| {name} | {sizes[name]:,} B | `{line[:16]}` |")
+
+          tag = os.environ["TAG"]
+          body = f"# Khvarenah {tag}\n\n"
+          body += "Cloudflare-Worker VLESS VPN console. Built entirely by GitHub Actions (no local uploads).\n\n"
+          body += "## Downloads\n\n"
+          body += "| Asset | Size | SHA-256 (prefix) |\n|---|---|---|\n"
+          body += "\n".join(rows) + "\n\n"
+          body += "Verification: `sha256sum -c SHA256SUMS.txt`\n\n"
+          body += "## Changelog\n\n"
+
+          try:
+              tags = subprocess.check_output(["git", "tag", "--sort=-v:refname"], text=True).split()
+              prev = tags[1] if len(tags) > 1 else None
+          except Exception:
+              prev = None
+
+          if prev:
+              log = subprocess.check_output(
+                  ["git", "log", f"{prev}..HEAD", "--oneline", "--no-merges"], text=True
+              ).strip()
+              body += (f"Changes since `{prev}`:\n\n```text\n{log}\n```\n" if log
+                       else f"No changes since `{prev}`.\n")
+          else:
+              body += "Initial release.\n"
+
+          Path("release_body.md").write_text(body)
+          print(body)
+          PY
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          body_path: release_body.md
+          files: release-assets/*
+          overwrite: true
