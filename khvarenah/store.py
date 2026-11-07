@@ -177,6 +177,28 @@ def remember_account(account_id: str, name: str = "", subdomain: str = "") -> No
         _write_json(ACCOUNTS_FILE, accs, private=True)
 
 
+def active_account() -> str:
+    """The account_id explicitly marked active (empty string if none set)."""
+    cfg = _read_json(CONFIG_FILE, {})
+    act = (cfg or {}).get("active_account", "")
+    accs = list_accounts()
+    return act if act in accs else ""
+
+
+def set_active_account(account_id: str) -> bool:
+    """Mark ``account_id`` as the active/default account. Returns False if unknown."""
+    accs = list_accounts()
+    if account_id not in accs:
+        return False
+    with _lock:
+        cfg = _read_json(CONFIG_FILE, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        cfg["active_account"] = account_id
+        _write_json(CONFIG_FILE, cfg, private=False)
+    return True
+
+
 def list_accounts() -> dict:
     accs = _read_json(ACCOUNTS_FILE, {})
     return accs if isinstance(accs, dict) else {}

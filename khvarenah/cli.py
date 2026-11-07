@@ -31,6 +31,7 @@ from khvarenah.cleanip import (find_clean_ips,  # noqa: E402
 from khvarenah.updater import (current_version, is_update_available,  # noqa: E402
                                 apply_update)
 from khvarenah import store  # noqa: E402
+from khvarenah.stealth import boundary_pause, enabled as stealth_enabled  # noqa: E402
 
 VERSION = current_version()
 
@@ -67,7 +68,9 @@ def _resolve_account(c, requested: str) -> tuple[str, dict]:
                           f"No account matches '{requested}'.",
                           "List accounts with: khvarenah check")
     else:
-        acc = accs[0]
+        # Default to the account the user last marked active (or the first).
+        active = store.active_account()
+        acc = next((a for a in accs if a.get("id") == active), accs[0])
     aid = acc.get("id", "")
     sub = ""
     try:
@@ -341,6 +344,10 @@ def cmd_autopilot(a) -> int:
         rc = cmd_deploy(d)
         if rc != 0:
             return rc
+        # Pause between stages — a human reads the deploy output, thinks, and
+        # then moves on to scanning.  Avoids back-to-back API bursts.
+        if stealth_enabled():
+            boundary_pause(1.0, 4.0)
         d2 = copy.copy(d)
         return cmd_clean(d2)
     except CFError as e:
@@ -389,16 +396,62 @@ def cmd_history(a) -> int:
     return 0
 
 
+def cmd_usage(a) -> int:
+    """Show daily request usage for the active account's workers."""
+    tok = _token(a.token)
+    c = Config(tok)
+    try:
+        acc, acc_info = _resolve_account(c, a.account)
+        scripts = c.list_scripts(acc)
+        if not scripts:
+            print(f"Account {store.account_label(acc)} has no worker scripts yet.")
+            return 0
+        import datetime as _dt
+        now = _dt.datetime.now(_dt.timezone.utc)
+        since = (now - _dt.timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
+        until = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(f"Daily request usage — {store.account_label(acc)} "
+              f"(since {since[:10]}):")
+        total = 0
+        for s in scripts[:20]:
+            sid = s.get("id") or s.get("name") or ""
+            if not sid:
+                continue
+            data = c.script_analytics(acc, sid, since=since, until=until)
+            count = (data or {}).get("requestCount", 0)
+            total += int(count or 0)
+            print(f"  • {sid:<30} {count:>12,} requests")
+        print(f"\n  TOTAL: {total:,} requests in the last 24h")
+        return 0
+    except CFError as e:
+        print(f"[error] {e}")
+        print(f"[fix]   {e.fix}")
+        return 2
+
+
 def cmd_accounts(a) -> int:
-    """List saved accounts (remembered from previous runs)."""
+    """List saved accounts (remembered from previous runs) or switch active."""
     accs = store.list_accounts()
     if not accs:
         print("No saved accounts yet. Run `khvarenah check` or `autopilot` to remember them.")
         return 0
+    # Switch the active (default) account if requested.
+    switch = getattr(a, "set", "")
+    if switch:
+        if switch not in accs:
+            print(f"No saved account '{switch}'. Use its account ID or name from the list below.")
+            return 1
+        if store.set_active_account(switch):
+            print(f"✓ Active account set to: {store.account_label(switch)} ({switch})")
+            return 0
+    active = store.active_account()
     print(f"☁️ Saved accounts: {len(accs)}")
     for aid, info in accs.items():
-        print(f"  • {info.get('name') or aid} ({aid})"
-              + (f" · {info['subdomain']}.workers.dev" if info.get("subdomain") else ""))
+        marker = "★ " if aid == active else "  "
+        print(f"{marker}{info.get('name') or aid} ({aid})"
+              + (f" · {info['subdomain']}.workers.dev" if info.get("subdomain") else "")
+              + ("  [active]" if aid == active else ""))
+    print("\nSwitch accounts:  khvarenah accounts --set <account-id>")
     return 0
 
 
@@ -415,12 +468,16 @@ def build_parser() -> argparse.ArgumentParser:
                         ("clean", "find a clean IP and emit a working vless link"),
                         ("autopilot", "deploy then find a clean IP (full auto)"),
                         ("upgrade", "self-update from the latest GitHub release"),
+                        ("usage", "show daily request usage for your active account"),
                         ("history", "list saved vless configs and tokens"),
-                        ("accounts", "list saved Cloudflare accounts")]:
+                        ("accounts", "list or switch saved Cloudflare accounts")]:
         sp = sub.add_parser(name, help=help_)
         if name == "history":
             sp.add_argument("--show-tokens", action="store_true",
                             help="reveal stored API tokens")
+        if name == "accounts":
+            sp.add_argument("--set", metavar="ACCOUNT_ID",
+                            help="switch the active (default) account")
         sp.add_argument("--token")
         sp.add_argument("--account")
         sp.add_argument("--worker")
@@ -454,6 +511,7 @@ def main(argv=None) -> int:
           "config": cmd_config, "status": cmd_status,
           "scan": cmd_scan, "clean": cmd_clean,
           "autopilot": cmd_autopilot, "upgrade": cmd_upgrade,
+          "usage": cmd_usage,
           "history": cmd_history, "accounts": cmd_accounts}[args.cmd]
     return fn(args)
 

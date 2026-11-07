@@ -29,7 +29,7 @@ def entrypoint() -> int:
     # Top-level CLI subcommands (so `khvarenah upgrade`, `khvarenah scan`, …)
     # work directly, not just behind the `cli` prefix.
     _CMDS = {"check", "deploy", "config", "status", "scan",
-             "clean", "autopilot", "upgrade", "history", "accounts"}
+             "clean", "autopilot", "upgrade", "usage", "history", "accounts"}
     if args and args[0] in _CMDS:
         return cli_main(args)
     # Top-level --version / -h route to the CLI parser without launching a UI

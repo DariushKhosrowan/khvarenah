@@ -14,6 +14,8 @@ from typing import Any, Optional
 
 import requests
 
+from .stealth import pre_request_pause, retry_backoff
+
 API = "https://api.cloudflare.com/client/v4"
 DEFAULT_COMPAT_DATE = "2026-07-01"
 
@@ -123,6 +125,11 @@ class Config:
                  timeout: Optional[int] = None) -> dict:
         url = f"{API}{path}"
         eff_to = timeout or self.timeout
+        # Human-shaped pacing: pause before each call so bursts of API
+        # activity read like a person rather than a bot (see stealth.py).
+        pre_request_pause("write" if files is not None else
+                          ("write" if method in ("PUT", "PATCH", "DELETE")
+                           else "read"))
         try:
             resp = self.session.request(method, url, json=json_body, files=files,
                                         headers=headers, timeout=eff_to)
@@ -167,6 +174,19 @@ class Config:
                              action="list scripts")
         return data.get("result", [])
 
+    def script_analytics(self, account_id: str, name: str,
+                         since: str, until: str) -> dict:
+        """Per-script request analytics for a time window.
+
+        ``since``/``until`` are ISO-8601 timestamps (e.g.
+        ``2026-11-06T00:00:00Z``).  Returns the raw result envelope; callers
+        should read ``requestCount`` (or the equivalent) defensively.
+        """
+        path = (f"/accounts/{account_id}/workers/scripts/{name}"
+                f"/analytics/summary?since={since}&until={until}")
+        data = self._request("GET", path, action="get worker analytics")
+        return data.get("result", {}) if isinstance(data, dict) else {}
+
     def deploy_script(self, account_id: str, name: str, js: bytes,
                       *, compat_date: str = DEFAULT_COMPAT_DATE,
                       timeout: int = 120, retries: int = 2) -> dict:
@@ -180,7 +200,7 @@ class Config:
                 if e.status is not None and e.status not in (429,) and not (e.status or 0) >= 500:
                     raise
                 if attempt < retries:
-                    time.sleep(2 * (attempt + 1))
+                    retry_backoff(attempt)
         assert last is not None
         raise last
 

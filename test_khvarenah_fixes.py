@@ -41,6 +41,7 @@ def _patch_mem(tmp_path, monkeypatch, store=store):
     monkeypatch.setattr(store, "HISTORY_FILE", tmp_path / "history.json")
     monkeypatch.setattr(store, "TOKENS_FILE", tmp_path / "tokens.json")
     monkeypatch.setattr(store, "ACCOUNTS_FILE", tmp_path / "accounts.json")
+    monkeypatch.setattr(store, "CONFIG_FILE", tmp_path / "config.json")
 
 
 def test_worker_name_falls_back_to_registry(tmp_path, monkeypatch):
