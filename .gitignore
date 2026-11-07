@@ -8,3 +8,6 @@ build/
 SenPaiScannerResult-*.txt
 client-*.json
 docs/shots/
+clean-ips.txt
+clean-configs.txt
+SenPaiScannerResult-*.txt
