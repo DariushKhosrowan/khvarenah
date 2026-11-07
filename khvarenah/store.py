@@ -105,6 +105,23 @@ def list_vless(limit: int = 50) -> List[dict]:
     return history[:limit]
 
 
+def last_vless(prefer_deployed: bool = True) -> Optional[dict]:
+    """Return the most recent saved vless profile record (newest first).
+
+    Prefers a base (non-clean-IP) deployment so tools like the Clean-IP
+    scanner always have a real workers.dev host to probe.  Falls back to the
+    newest record regardless of kind when no deployed base exists.
+    """
+    history = list_vless(limit=200)
+    if not history:
+        return None
+    if prefer_deployed:
+        for rec in history:
+            if not rec.get("clean_ip"):
+                return rec
+    return history[0]
+
+
 def clear_history() -> int:
     with _lock:
         history = _read_json(HISTORY_FILE, [])

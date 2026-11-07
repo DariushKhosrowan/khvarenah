@@ -51,6 +51,26 @@ class StoreTest(unittest.TestCase):
         store.save_token("TOKEN_DEFAULT")
         self.assertEqual(store.get_token(), "TOKEN_DEFAULT")
 
+    def test_last_vless_prefers_deployed_base(self):
+        # newest record is a clean-IP entry, older one is the base deployment
+        store.remember_vless(_fake_profile(name="base-worker"), clean_ip=False)
+        store.remember_vless(_fake_profile(name="clean-worker"),
+                             clean_ip=True)
+        rec = store.last_vless()
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["name"], "base-worker")
+        self.assertFalse(rec["clean_ip"])
+        # fallback: with only clean-IP entries, return the newest one
+        store.clear_history()
+        store.remember_vless(_fake_profile(name="clean-worker"),
+                             clean_ip=True)
+        rec = store.last_vless()
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["name"], "clean-worker")
+        # empty history -> None
+        store.clear_history()
+        self.assertIsNone(store.last_vless())
+
     def test_clear(self):
         store.save_token("X")
         store.remember_vless(_fake_profile())

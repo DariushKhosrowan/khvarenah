@@ -403,6 +403,36 @@ class State:
 
 STATE = State()
 
+
+def _restore_prof(state=None) -> bool:
+    """Restore the last saved deployment into ``state.prof``.
+
+    Khvarenah persists every generated vless config to ``~/.khvarenah`` but
+    never re-hydrated it on a fresh launch — leaving ``prof`` None so the
+    Clean-IP page wrongly claimed "No deployed config available" even when a
+    worker was already deployed and saved.  This restores the most recent
+    saved deployment so the scanner works across restarts and in autopilot.
+    """
+    st = state or STATE
+    if st.prof is not None:
+        return True
+    rec = store.last_vless()
+    if not rec or not rec.get("address"):
+        return False
+    st.prof = VlessProfile(
+        uuid=rec.get("uuid", "") or "",
+        address=rec["address"],
+        port=int(rec.get("port") or 443),
+        name=rec.get("name") or "cf-worker-edge",
+    )
+    if not st.uuid:
+        st.uuid = getattr(st.prof, "uuid", "")
+    if not st.host:
+        st.host = st.prof.address
+    if not st.name:
+        st.name = st.prof.name
+    return True
+
 # ---------------------------------------------------------------------------
 # Sidebar stepper
 # ---------------------------------------------------------------------------
@@ -1160,6 +1190,7 @@ class CleanIPPage(QWidget):
         lo.addStretch(1)
 
     def on_enter(self):
+        _restore_prof(STATE)
         if STATE.prof is None:
             self.status.setObjectName("err")
             _repolish(self.status)

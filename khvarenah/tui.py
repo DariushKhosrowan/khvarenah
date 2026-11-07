@@ -87,12 +87,34 @@ class State:
     uuid = ""
     worker_path = None
     host = ""
-    prof = None
+    prof: "VlessProfile | None" = None
     autopilot = False
     last_error = ""
 
 
 APP = State()
+
+
+def _restore_prof() -> bool:
+    """Restore the last saved deployment into APP.prof if not already set."""
+    if APP.prof is not None:
+        return True
+    rec = store.last_vless()
+    if not rec or not rec.get("address"):
+        return False
+    APP.prof = VlessProfile(
+        uuid=rec.get("uuid", "") or "",
+        address=rec["address"],
+        port=int(rec.get("port") or 443),
+        name=rec.get("name") or "cf-worker-edge",
+    )
+    if not APP.uuid:
+        APP.uuid = getattr(APP.prof, "uuid", "")
+    if not APP.host:
+        APP.host = APP.prof.address
+    if not APP.name:
+        APP.name = APP.prof.name
+    return True
 
 
 class WelcomeScreen(BackMixin):
@@ -351,6 +373,7 @@ class CleanIPScreen(BackMixin):
     def _scan(self):
         pb = self.query_one("#pb", ProgressBar)
         msg = self.query_one("#msg", Static)
+        _restore_prof()
         if APP.prof is None:
             msg.update("[red]No deployed config available — complete the wizard first.[/]")
             return
