@@ -376,4 +376,34 @@ mod tests {
         // --all raises it. This asserts the default semantics the user asked for.
         assert_eq!(crate::cleanip::DEFAULT_TARGET_TOP, 1);
     }
+
+    #[test]
+    fn collect_endpoints_unions_three_sources_deduplicated() {
+        let dir = std::env::temp_dir().join(format!("khv-scan-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+
+        // Source 1: a live-results file (SenPaiScannerResult-*.txt).
+        fs::write(
+            dir.join("SenPaiScannerResult-x.txt"),
+            "Host: 1.1.1.1:443\n1.2.3.4:8443\n",
+        )
+        .unwrap();
+        // Source 2: the output file (overlaps one endpoint with live-results).
+        let out_file = dir.join("output.txt");
+        fs::write(&out_file, "1.2.3.4:8443\n5.5.5.5:2053\n").unwrap();
+        // Source 3: stdout (overlaps one endpoint with output).
+        let stdout = "scan: 5.5.5.5:2053 ok\n7.7.7.7:443\n";
+
+        let eps = collect_endpoints(&[dir.clone()], Some(&out_file), stdout);
+
+        // Expected union: 1.1.1.1:443, 1.2.3.4:8443, 5.5.5.5:2053, 7.7.7.7:443
+        assert_eq!(eps.len(), 4, "expected 4 dedup endpoints, got {eps:?}");
+        assert!(eps.contains(&"1.1.1.1:443".to_string()));
+        assert!(eps.contains(&"1.2.3.4:8443".to_string()));
+        assert!(eps.contains(&"5.5.5.5:2053".to_string()));
+        assert!(eps.contains(&"7.7.7.7:443".to_string()));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

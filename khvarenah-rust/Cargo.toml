@@ -27,6 +27,7 @@ default = []
 health-tls = []
 
 [dev-dependencies]
+httpmock = "0.9.0"
 tempfile = "3"
 
 [profile.release]

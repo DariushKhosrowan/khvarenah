@@ -151,6 +151,9 @@ fn explain_response(status: u16, body: &Value, fallback: &str) -> CfError {
 pub struct Config {
     pub token: String,
     pub timeout: u64,
+    /// Overridable base URL (defaults to the real CF API). Tests point this at
+    /// a mock server.
+    pub base_url: String,
 }
 
 impl Config {
@@ -158,7 +161,15 @@ impl Config {
         Self {
             token: token.trim().to_string(),
             timeout: 25,
+            base_url: API.to_string(),
         }
+    }
+
+    /// Point the client at a different base URL (used by mock-server tests).
+    #[allow(dead_code)]
+    pub fn with_base_url(mut self, base_url: &str) -> Self {
+        self.base_url = base_url.trim_end_matches('/').to_string();
+        self
     }
 
     #[allow(dead_code)]
@@ -178,7 +189,7 @@ impl Config {
             .build()
             .map_err(|e| CfError::new("Client build error", e.to_string(), ""))?;
 
-        let url = format!("{API}{path}");
+        let url = format!("{}{path}", self.base_url);
         let mut req = client
             .request(
                 reqwest::Method::from_bytes(method.as_bytes()).map_err(|e| {
@@ -381,5 +392,128 @@ mod tests {
         let e = explain_response(403, &body, "");
         assert_eq!(e.title, "Account deactivated");
         assert_eq!(e.status, Some(403));
+    }
+
+    // -- mock-server tests (httpmock) -------------------------------------
+    // These make the deploy path verifiable offline, without a real (possibly
+    // deactivated) Cloudflare account. The client points at a local MockServer
+    // via Config::with_base_url.
+
+    use httpmock::prelude::*;
+    use httpmock::{HttpMockRequest, HttpMockResponse};
+    use serde_json::json;
+    use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    fn silent() {
+        std::env::set_var("KHVARENAH_STEALTH", "0");
+    }
+
+    #[test]
+    fn deploy_script_sends_multipart_with_metadata_and_worker() {
+        silent();
+        let server = MockServer::start();
+        let captured: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let cap = captured.clone();
+        let mock = server.mock(|when, then| {
+            when.method(PUT)
+                .path("/accounts/acct1/workers/scripts/myworker");
+            then.respond_with(move |req: &HttpMockRequest| {
+                *cap.lock().unwrap() = Some(req.body().to_string());
+                HttpMockResponse::builder()
+                    .status(200)
+                    .body(r#"{"success":true,"result":{}}"#)
+                    .build()
+            });
+        });
+
+        let c = Config::new("tok").with_base_url(&server.base_url());
+        let js = b"export default { async fetch() { return new Response('ok'); } };";
+        let r = c.deploy_script("acct1", "myworker", js, "2026-07-01", 2);
+        assert!(r.is_ok(), "deploy failed: {:?}", r.err());
+
+        assert_eq!(mock.calls(), 1);
+        let raw = captured.lock().unwrap().clone().unwrap_or_default();
+        assert!(raw.contains("main_module"), "metadata part missing main_module");
+        assert!(raw.contains("_worker.js"), "worker part name missing");
+        assert!(
+            raw.contains("export default"),
+            "worker JS bytes not present in multipart body"
+        );
+    }
+
+    #[test]
+    fn deploy_script_retries_on_429_then_succeeds() {
+        silent();
+        let server = MockServer::start();
+        let calls = Arc::new(AtomicU32::new(0));
+        let cnt = calls.clone();
+        let mock = server.mock(|when, then| {
+            when.method(PUT).path_includes("/workers/scripts/retry-worker");
+            then.respond_with(move |_req: &HttpMockRequest| {
+                let n = cnt.fetch_add(1, Ordering::SeqCst);
+                if n == 0 {
+                    HttpMockResponse::builder().status(429).build()
+                } else {
+                    HttpMockResponse::builder()
+                        .status(200)
+                        .body(r#"{"success":true,"result":{}}"#)
+                        .build()
+                }
+            });
+        });
+
+        let c = Config::new("tok").with_base_url(&server.base_url());
+        let r = c.deploy_script("acc", "retry-worker", b"js()", "2026-07-01", 3);
+        assert!(r.is_ok(), "expected success after retry: {:?}", r.err());
+        assert!(calls.load(Ordering::SeqCst) >= 2, "expected at least 2 attempts");
+        let _ = mock;
+    }
+
+    #[test]
+    fn deploy_script_403_9109_maps_to_account_deactivated() {
+        silent();
+        let server = MockServer::start();
+        let _mock = server.mock(|when, then| {
+            when.method(PUT).path_includes("/workers/scripts/bad-acc");
+            then.status(403).json_body(json!({
+                "success": false,
+                "errors": [{ "code": 9109, "message": "User was deactivated" }]
+            }));
+        });
+
+        let c = Config::new("tok").with_base_url(&server.base_url());
+        let e = c
+            .deploy_script("acc", "bad-acc", b"js()", "2026-07-01", 2)
+            .unwrap_err();
+        assert_eq!(e.title, "Account deactivated");
+        assert!(e.detail.contains("deactivated"));
+    }
+
+    #[test]
+    fn deploy_script_known_error_codes_map_to_templates() {
+        silent();
+        for (code, expected_title) in [
+            (10000, "Authentication failure"),
+            (6003, "Insufficient permission"),
+            (10021, "Too many requests"),
+            (10022, "Not authenticated"),
+            (9106, "Script deleted"),
+            (8000001, "Worker script error"),
+        ] {
+            let server = MockServer::start();
+            let _mock = server.mock(|when, then| {
+                when.method(PUT).path_includes("/workers/scripts/code-test");
+                then.status(400).json_body(json!({
+                    "success": false,
+                    "errors": [{ "code": code, "message": "x" }]
+                }));
+            });
+            let c = Config::new("tok").with_base_url(&server.base_url());
+            let e = c
+                .deploy_script("acc", "code-test", b"js()", "2026-07-01", 0)
+                .unwrap_err();
+            assert_eq!(e.title, expected_title, "mismatch for code {code}");
+        }
     }
 }
