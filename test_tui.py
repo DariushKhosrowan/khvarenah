@@ -6,7 +6,7 @@ driving the asyncio event loop explicitly inside sync test functions.
 
 import asyncio
 
-from khvarenah.tui import CfConsoleApp
+from khvarenah.tui import CfConsoleApp, DeployScreen, State, APP
 
 
 def _run(coro):
@@ -46,3 +46,22 @@ def test_tui_constructs_all_screens():
     app = CfConsoleApp()
     expected = {"welcome", "token", "account", "worker", "deploy", "config", "done"}
     assert set(app.SCREENS.keys()) == expected
+
+
+def test_deploy_screen_has_copy_error_binding():
+    # The deploy screen must expose a copy binding so errors are copyable.
+    keys = {b.key for b in DeployScreen.BINDINGS}
+    assert "c" in keys
+    actions = {b.action for b in DeployScreen.BINDINGS}
+    assert "copy_error" in actions
+
+
+def test_deploy_screen_has_action_copy_error():
+    assert hasattr(DeployScreen, "action_copy_error")
+
+
+def test_state_holds_last_error():
+    # The deploy error is captured so it can be copied verbatim.
+    assert hasattr(State, "last_error")
+    APP.last_error = "test error line\nstack trace"
+    assert APP.last_error == "test error line\nstack trace"
