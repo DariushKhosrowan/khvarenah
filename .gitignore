@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+client-xray.json
+clean-ips.txt
+.cf-console/
+SenPaiScannerResult-*.txt
