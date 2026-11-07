@@ -52,7 +52,12 @@
     "name": "Khosrowan",
     "url": "https://khosrowan.ir",
     "sameAs": ["https://t.me/Khosrowan_ir"]
-  }
+  },
+  "screenshot": [
+    "https://dariushkhosrowan.github.io/cf-console/img/welcome.png",
+    "https://dariushkhosrowan.github.io/cf-console/img/config.png",
+    "https://dariushkhosrowan.github.io/cf-console/img/done.png"
+  ]
 }
 </script>
 
@@ -77,38 +82,73 @@
     line-height: 1.6;
     min-height: 100vh;
   }
-  .wrap { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
-  header { text-align: center; padding: 48px 0 32px; }
-  h1 { font-size: 2.4rem; font-weight: 800; letter-spacing: -.5px; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 64px; }
+  header { text-align: center; padding: 48px 0 24px; }
+  h1 { font-size: 2.5rem; font-weight: 800; letter-spacing: -.5px; }
   h1 .accent { background: linear-gradient(90deg, var(--gold), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .tagline { color: var(--muted); font-size: 1.1rem; max-width: 700px; margin: 12px auto 0; }
+  .tagline { color: var(--muted); font-size: 1.12rem; max-width: 720px; margin: 12px auto 0; }
   .badges { margin-top: 18px; }
   .badges img { height: 22px; margin: 0 3px; border-radius: 4px; }
   .cta { margin-top: 28px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .btn { display: inline-block; padding: 12px 22px; border-radius: 10px; font-weight: 600; text-decoration: none; font-size: .95rem; transition: transform .12s ease, box-shadow .12s ease; }
+  .btn { display: inline-block; padding: 13px 24px; border-radius: 10px; font-weight: 600; text-decoration: none; font-size: .95rem; transition: transform .12s ease, box-shadow .12s ease, background .12s; }
   .btn-primary { background: linear-gradient(90deg, var(--gold), var(--accent2)); color: #0b1120; }
   .btn-ghost { border: 1px solid var(--border); color: var(--text); background: rgba(21,31,56,.6); }
   .btn:hover { transform: translateY(-2px); }
   .btn-primary:hover { box-shadow: 0 6px 24px rgba(230,185,64,.35); }
-  h2 { font-size: 1.5rem; margin: 48px 0 16px; color: #fff; }
+
+  /* ---- hero terminal showcase ---- */
+  .hero-shot { margin: 36px auto 0; max-width: 960px; }
+  .terminal-frame {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px -18px rgba(0,0,0,.65);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px;
+    background: #0f1a30;
+    border-bottom: 1px solid var(--border);
+    font-size: .78rem; color: var(--muted);
+    font-family: "SFMono-Regular", Consolas, Menlo, monospace;
+  }
+  .term-dots { display: flex; gap: 6px; margin-right: 6px; }
+  .term-dots span { width: 11px; height: 11px; border-radius: 50%; }
+  .term-dots span:nth-child(1) { background: #ff5f57; }
+  .term-dots span:nth-child(2) { background: #febc2e; }
+  .term-dots span:nth-child(3) { background: #28c840; }
+  .term-title { flex: 1; text-align: center; }
+  .terminal-frame img { display: block; width: 100%; height: auto; }
+
+  /* ---- wizard gallery ---- */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; margin-top: 24px; }
+  .shot-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 12px; transition: border-color .15s ease, transform .15s ease; }
+  .shot-card:hover { border-color: var(--gold); transform: translateY(-3px); }
+  .shot-card img { border-radius: 8px; width: 100%; height: auto; display: block; border: 1px solid var(--border); }
+  .shot-card p { font-size: .85rem; color: var(--muted); padding: 10px 4px 2px; }
+  .shot-card strong { color: var(--gold); }
+
+  h2 { font-size: 1.55rem; margin: 52px 0 16px; color: #fff; text-align: center; }
   h2 .acc { color: var(--gold); }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
   .card h3 { font-size: 1.05rem; margin-bottom: 8px; color: var(--gold); }
   .card p { color: var(--muted); font-size: .92rem; }
-  .steps { list-style: none; counter-reset: step; }
-  .steps li { counter-increment: step; padding: 12px 0 12px 48px; position: relative; border-bottom: 1px solid var(--border); color: var(--text); }
+  .steps { list-style: none; counter-reset: step; max-width: 720px; margin: 0 auto; }
+  .steps li { counter-increment: step; padding: 12px 0 12px 48px; position: relative; border-bottom: 1px solid var(--border); color: var(--text); text-align: left; }
   .steps li::before { content: counter(step); position: absolute; left: 0; top: 14px; width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(135deg, var(--gold), var(--accent2)); color: #0b1120; font-weight: 700; display: flex; align-items: center; justify-content: center; font-size: .9rem; }
   .steps li:last-child { border-bottom: none; }
   pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; overflow-x: auto; font-size: .88rem; margin: 12px 0; font-family: "SFMono-Regular", Consolas, "Roboto Mono", Menlo, monospace; }
   code { font-family: inherit; background: rgba(230,185,64,.12); padding: 1px 5px; border-radius: 4px; font-size: .9em; }
   pre code { background: none; padding: 0; }
   .cmt { color: #64748b; }
-  .platform { font-weight: 700; color: var(--gold); }
+  .platform { font-weight: 700; color: var(--gold); text-align: center; margin-top: 18px; }
+  .slim { max-width: 720px; margin: 0 auto; }
   footer { text-align: center; margin-top: 56px; color: var(--muted); font-size: .85rem; }
   footer a { color: var(--accent); text-decoration: none; }
   footer a:hover { text-decoration: underline; }
-  @media (max-width: 640px) { h1 { font-size: 1.8rem; } .wrap { padding: 24px 16px; } }
+  @media (max-width: 640px) { h1 { font-size: 1.9rem; } .wrap { padding: 24px 16px; } h2 { font-size: 1.3rem; } }
 </style>
 </head>
 <body>
@@ -130,8 +170,18 @@
     </div>
   </header>
 
+  <div class="hero-shot">
+    <div class="terminal-frame">
+      <div class="term-bar">
+        <div class="term-dots"><span></span><span></span><span></span></div>
+        <div class="term-title">khvarenah — welcome</div>
+      </div>
+      <img src="img/welcome.png" alt="Khvarenah TUI welcome screen with golden banner and wizard overview">
+    </div>
+  </div>
+
   <h2>What is <span class="acc">Khvarenah</span>?</h2>
-  <p style="color:var(--muted);max-width:720px">Khvarenah (خوَرنه) is the Avestan word for <em>divine royal glory</em> — the sacred inner fire that lets one rise above every barrier. That is exactly what this tool does: it gives you the glory to reach over censorship walls. It is a free, open-source terminal console built for anyone who wants a personal Cloudflare Worker VLESS proxy without wrestling with dashboards, JSON, or raw APIs.</p>
+  <p style="color:var(--muted);max-width:760px;margin:0 auto;text-align:center">Khvarenah (خوَرنه) is the Avestan word for <em>divine royal glory</em> — the sacred inner fire that lets one rise above every barrier. That is exactly what this tool does: it gives you the glory to reach over censorship walls. It is a free, open-source terminal console built for anyone who wants a personal Cloudflare Worker VLESS proxy without wrestling with dashboards, JSON, or raw APIs.</p>
 
   <h2>Why <span class="acc">Khvarenah</span>?</h2>
   <div class="grid">
@@ -146,25 +196,25 @@
   <h2>Install <span class="acc">in seconds</span></h2>
 
   <p class="platform">🐧 Linux — one command (no coding, no pip)</p>
-  <pre><code>curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash</code></pre>
-  <p style="color:var(--muted);font-size:.9rem">…or download the <strong>.deb</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and run <code>sudo apt install ./khvarenah_*.deb</code>.</p>
+  <div class="slim"><pre><code>curl -fsSL https://raw.githubusercontent.com/DariushKhosrowan/cf-console/main/install.sh | bash</code></pre></div>
+  <p style="color:var(--muted);font-size:.9rem;text-align:center">…or download the <strong>.deb</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and run <code>sudo apt install ./khvarenah_*.deb</code>.</p>
 
   <p class="platform">🪟 Windows — one click</p>
-  <p style="color:var(--muted);font-size:.9rem">Download <strong>khvarenah.exe</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and double-click it.</p>
+  <p style="color:var(--muted);font-size:.9rem;text-align:center">Download <strong>khvarenah.exe</strong> from <a href="https://github.com/DariushKhosrowan/cf-console/releases" style="color:var(--accent)">GitHub Releases</a> and double-click it.</p>
 
   <p class="platform">🐧 Advanced (developers)</p>
-  <pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
+  <div class="slim"><pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
 ./install.sh                <span class="cmt"># creates venv, installs, launches TUI</span>
-./install.sh cli --help     <span class="cmt"># headless CLI</span></code></pre>
+./install.sh cli --help     <span class="cmt"># headless CLI</span></code></pre></div>
 
   <p class="platform">🪟 Windows (developers)</p>
-  <pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
+  <div class="slim"><pre><code>git clone https://github.com/DariushKhosrowan/cf-console.git
 cd cf-console
 run.bat                     <span class="cmt"># interactive TUI</span>
-run.bat cli --help          <span class="cmt"># headless CLI</span></code></pre>
+run.bat cli --help          <span class="cmt"># headless CLI</span></code></pre></div>
 
-  <p style="color:var(--muted);font-size:.9rem">The .deb and .exe bundle Python, so nothing else needs installing.</p>
+  <p style="color:var(--muted);font-size:.9rem;text-align:center;margin-top:14px">The .deb and .exe bundle Python, so nothing else needs installing.</p>
 
   <h2>The wizard: <span class="acc">zero → 100</span></h2>
   <ol class="steps">
@@ -177,12 +227,23 @@ run.bat cli --help          <span class="cmt"># headless CLI</span></code></pre>
     <li><strong>Done</strong> — deployment details + local-test guidance.</li>
   </ol>
 
+  <h2>Inside the <span class="acc">terminal</span></h2>
+  <p style="color:var(--muted);text-align:center;max-width:640px;margin:0 auto">Every screen of the interactive wizard — captured live from the real TUI.</p>
+  <div class="gallery">
+    <div class="shot-card"><img src="img/token.png" alt="Token verification screen"><p><strong>Token</strong> — paste & verify your Cloudflare API token.</p></div>
+    <div class="shot-card"><img src="img/account.png" alt="Account picker screen"><p><strong>Account</strong> — choose the account to deploy on.</p></div>
+    <div class="shot-card"><img src="img/worker.png" alt="Worker naming screen"><p><strong>Worker</strong> — name it and generate a UUID.</p></div>
+    <div class="shot-card"><img src="img/deploy.png" alt="Deploy progress screen"><p><strong>Deploy</strong> — wrangler uploads your worker.</p></div>
+    <div class="shot-card"><img src="img/config.png" alt="vless config screen"><p><strong>Config</strong> — your vless:// share link, copyable.</p></div>
+    <div class="shot-card"><img src="img/done.png" alt="Done screen"><p><strong>Done</strong> — deployment details + test guidance.</p></div>
+  </div>
+
   <h2>Headless <span class="acc">CLI</span></h2>
-  <pre><code>khvarenah check   [--token T] [--worker W]
+  <div class="slim"><pre><code>khvarenah check   [--token T] [--worker W]
 khvarenah deploy  [--token T] [--name N] [--uuid U] [--worker W] [--account A]
 khvarenah config  [--token T] [--name N] [--uuid U] [--address H] [--port P]
 khvarenah status  [--token T] [--account A]
-khvarenah scan    [--token T] [--name N] [--uuid U]</code></pre>
+khvarenah scan    [--token T] [--name N] [--uuid U]</code></pre></div>
 
   <footer>
     <p><strong>Khosrowan</strong> · a tool by <a href="https://khosrowan.ir">Khosrowan Team</a> — <a href="https://t.me/Khosrowan_ir">@Khosrowan_ir</a> on Telegram</p>

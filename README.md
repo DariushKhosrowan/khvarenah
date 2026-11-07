@@ -21,6 +21,22 @@ Create and control a Cloudflare-Worker VLESS VPN — from zero to 100, entirely 
 
 ---
 
+## 🎬 The console in action
+
+The interactive wizard guides you **0 → 100** — welcome, token, account, worker, deploy, config, done:
+
+![Welcome](docs/img/welcome.png)
+
+| Token | Account | Worker |
+|---|---|---|
+| ![Token](docs/img/token.png) | ![Account](docs/img/account.png) | ![Worker](docs/img/worker.png) |
+
+| Deploy | Config | Done |
+|---|---|---|
+| ![Deploy](docs/img/deploy.png) | ![Config](docs/img/config.png) | ![Done](docs/img/done.png) |
+
+---
+
 ## ✦ What is Khvarenah?
 
 **خوَرنه (Khvarenah)** is the Avestan term for *divine royal glory / radiance* — a sacred inner fire that lets one rise above every barrier. That is exactly what this tool does: it gives you the glory to reach over censorship walls. The app greets you with the golden Khosrowan emblem, rendered as true-color terminal art.
@@ -202,7 +218,7 @@ cf-console/
 ## 🧪 Development
 
 ```bash
-.venv/bin/python test_classifier.py -v   # run the test suite
+.venv/bin/python -m pytest -v   # run the test suite
 ```
 
 ---
