@@ -95,13 +95,12 @@ QLabel#step_num {
 }
 /* stepper step text label — explicit colors per state (color:inherit does not
    inherit from the button's stylesheet, so it must be set here) */
-QLabel#step_text {
+QPushButton#step QLabel#step_text {
     color: #b7a984; font-size: 13px; font-weight: 500;
     background: transparent; border: none;
 }
 QPushButton#step:hover QLabel#step_text { color: #e8c266; }
 QPushButton#step:checked QLabel#step_text { color: #f2d78a; }
-QPushButton#step:disabled QLabel#step_text { color: #4a4433; }
 QPushButton#step:checked QLabel#step_num { color: #e8c266; }
 
 /* ---- content ---- */
@@ -250,9 +249,6 @@ class StepButton(QPushButton):
         num.setObjectName("step_num")
         label = QLabel(text)
         label.setObjectName("step_text")
-        label.setStyleSheet(
-            "background:transparent; border:none; font-size:13px;"
-            "font-weight:500;")
         row.addWidget(num)
         row.addWidget(label, 1)
         self._num = num
