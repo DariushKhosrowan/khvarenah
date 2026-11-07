@@ -90,6 +90,7 @@ def test_history_caps_at_500(tmp_path, monkeypatch):
 class _C:
     def __init__(self, accounts):
         self._accounts = accounts
+        self.token = "tok"
 
     def list_accounts(self):
         return self._accounts

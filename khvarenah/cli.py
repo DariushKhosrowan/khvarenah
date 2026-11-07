@@ -81,6 +81,24 @@ def _resolve_account(c, requested: str) -> tuple[str, dict]:
     return aid, acc
 
 
+def _client_and_account(a):
+    """Build a Config using the right token for the target account.
+
+    Resolution order:
+      1. If the user requested a specific account (or an active account is
+         set), use that account's per-account token if one was saved.
+      2. Otherwise fall back to the default token.
+    Returns (client, account_id, account_info).
+    """
+    target = getattr(a, "account", "") or store.active_account()
+    tok = store.get_account_token(target) if target else None
+    if not tok:
+        tok = _token(getattr(a, "token", ""))
+    c = Config(tok)
+    acc, acc_info = _resolve_account(c, target or getattr(a, "account", ""))
+    return c, acc, acc_info
+
+
 def _print_dict(label: str, d: dict) -> None:
     print(f"\n== {label} ==")
     print(json.dumps(d, indent=2, ensure_ascii=False))
@@ -121,10 +139,8 @@ def cmd_check(a) -> int:
 
 
 def cmd_deploy(a) -> int:
-    tok = _token(a.token)
-    c = Config(tok)
     try:
-        acc, acc_info = _resolve_account(c, a.account)
+        c, acc, acc_info = _client_and_account(a)
         # Autopilot / default: derive the worker name from the account name,
         # never a "vpn" label, and never require the user to type one.
         name = wb.safe_worker_name(a.name or wb.worker_name_from_account(acc_info))
@@ -138,7 +154,7 @@ def cmd_deploy(a) -> int:
             return 1
         print(f"Deploying '{name}' to account {store.account_label(acc)} ...")
         uuid = a.uuid or wb.generate_uuid()
-        result = deploy_wrangler(tok, acc, name, str(worker_path), uuid)
+        result = deploy_wrangler(c.token, acc, name, str(worker_path), uuid)
         if not result.ok:
             print(f"[error] {result.message}")
             if result.stderr:
@@ -188,16 +204,10 @@ def cmd_config(a) -> int:
 
 
 def cmd_status(a) -> int:
-    tok = _token(a.token)
-    c = Config(tok)
     try:
-        accs = c.list_accounts()
-        if not accs:
-            print("No accounts found.")
-            return 1
-        acc = a.account or accs[0]["id"]
+        c, acc, acc_info = _client_and_account(a)
         scripts = c.list_scripts(acc)
-        print(f"Account {acc} — {len(scripts)} worker script(s):")
+        print(f"Account {store.account_label(acc)} ({acc}) — {len(scripts)} worker script(s):")
         for s in scripts:
             print(f"  - {s.get('id')} (created {s.get('created_on','')[:19]})")
         return 0
@@ -249,10 +259,8 @@ def cmd_scan(a) -> int:
 
 def cmd_clean(a) -> int:
     """Find a clean IP for a deployed worker, then emit working vless links."""
-    tok = _token(a.token)
-    c = Config(tok)
     try:
-        acc, acc_info = _resolve_account(c, a.account)
+        c, acc, acc_info = _client_and_account(a)
         name = wb.safe_worker_name(a.name or wb.worker_name_from_account(acc_info))
         sub = store.get_account(acc).get("subdomain") or c.get_subdomain(acc)
         default_host = f"{name}.{sub}.workers.dev" if sub else f"{name}.workers.dev"
@@ -328,16 +336,14 @@ def cmd_clean(a) -> int:
 
 def cmd_autopilot(a) -> int:
     """Deploy, then find a clean IP and emit a working vless link."""
-    tok = _token(a.token)
-    c = Config(tok)
     try:
-        acc, acc_info = _resolve_account(c, a.account)
+        c, acc, acc_info = _client_and_account(a)
         name = wb.safe_worker_name(a.name or wb.worker_name_from_account(acc_info))
         uuid = a.uuid or wb.generate_uuid()
         # Deploy (threading the same UUID into clean so scanning has a config).
         import copy
         d = copy.copy(a)
-        d.token = tok
+        d.token = c.token
         d.account = acc
         d.name = name
         d.uuid = uuid
@@ -398,10 +404,8 @@ def cmd_history(a) -> int:
 
 def cmd_usage(a) -> int:
     """Show daily request usage for the active account's workers."""
-    tok = _token(a.token)
-    c = Config(tok)
     try:
-        acc, acc_info = _resolve_account(c, a.account)
+        c, acc, acc_info = _client_and_account(a)
         scripts = c.list_scripts(acc)
         if not scripts:
             print(f"Account {store.account_label(acc)} has no worker scripts yet.")
@@ -410,7 +414,7 @@ def cmd_usage(a) -> int:
         now = _dt.datetime.now(_dt.timezone.utc)
         since = (now - _dt.timedelta(days=1)).strftime("%Y-%m-%dT00:00:00Z")
         until = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-        print(f"Daily request usage — {store.account_label(acc)} "
+        print(f"Daily request usage — {store.account_label(acc)} ({acc}) "
               f"(since {since[:10]}):")
         total = 0
         for s in scripts[:20]:
@@ -430,10 +434,47 @@ def cmd_usage(a) -> int:
 
 
 def cmd_accounts(a) -> int:
-    """List saved accounts (remembered from previous runs) or switch active."""
+    """List saved accounts, add a new one, or switch the active account."""
+    # Add a new account: verify the token and remember its account(s).
+    if getattr(a, "add", None):
+        tok = _token(a.add)
+        c = Config(tok)
+        try:
+            r = c.verify_token()
+            if not r.get("success"):
+                print("[error] Token could not be verified.")
+                return 2
+            accs = c.list_accounts()
+            if not accs:
+                print("[error] This token has no Cloudflare accounts.")
+                return 2
+            # save the token under each account id + as default if none yet
+            stored = store.stored_tokens()
+            for acc in accs:
+                aid = acc.get("id", "")
+                store.remember_account(aid, acc.get("name", ""))
+                store.save_token(tok, aid)
+            if not stored:
+                store.save_token(tok, "default")
+            # switch active to the first added account
+            first = accs[0].get("id", "")
+            if first:
+                store.set_active_account(first)
+            print(f"✓ Added {len(accs)} account(s) from this token:")
+            for acc in accs:
+                aid = acc.get("id", "")
+                marker = "★ " if aid == store.active_account() else "  "
+                print(f"{marker}{acc.get('name')} ({aid})")
+            return 0
+        except CFError as e:
+            print(f"[error] {e}")
+            print(f"[fix]   {e.fix}")
+            return 2
+
     accs = store.list_accounts()
     if not accs:
-        print("No saved accounts yet. Run `khvarenah check` or `autopilot` to remember them.")
+        print("No saved accounts yet. Add one:")
+        print("  khvarenah accounts --add <CF_API_TOKEN>")
         return 0
     # Switch the active (default) account if requested.
     switch = getattr(a, "set", "")
@@ -448,10 +489,13 @@ def cmd_accounts(a) -> int:
     print(f"☁️ Saved accounts: {len(accs)}")
     for aid, info in accs.items():
         marker = "★ " if aid == active else "  "
+        tok_mark = " 🔑" if store.get_account_token(aid) else ""
         print(f"{marker}{info.get('name') or aid} ({aid})"
               + (f" · {info['subdomain']}.workers.dev" if info.get("subdomain") else "")
+              + tok_mark
               + ("  [active]" if aid == active else ""))
     print("\nSwitch accounts:  khvarenah accounts --set <account-id>")
+    print("Add an account:  khvarenah accounts --add <CF_API_TOKEN>")
     return 0
 
 
@@ -478,6 +522,8 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "accounts":
             sp.add_argument("--set", metavar="ACCOUNT_ID",
                             help="switch the active (default) account")
+            sp.add_argument("--add", metavar="CF_API_TOKEN",
+                            help="verify a token and add its account(s)")
         sp.add_argument("--token")
         sp.add_argument("--account")
         sp.add_argument("--worker")

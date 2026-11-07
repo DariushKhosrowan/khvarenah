@@ -155,7 +155,8 @@ khvarenah cli clean    [--token T] [--name N] [--uuid U] [--top N] [--all]
 khvarenah cli autopilot [--token T] [--name N] [--account A] [--top N] [--all]
                        # deploy → find clean IP → working link (fully automatic)
 khvarenah cli history  [--show-tokens]                          # saved vless configs + tokens
-khvarenah cli accounts                                          # saved Cloudflare accounts
+khvarenah cli accounts [--add T] [--set ACCOUNT_ID]            # add / switch saved accounts
+khvarenah cli usage                                             # daily request usage (active account)
 khvarenah cli upgrade                                            # self-update from GitHub
 khvarenah cli --version
 ```
@@ -166,6 +167,25 @@ config is recorded (`history.json`), every API token is stored (`tokens.json`,
 re-type an account ID, a token, or a past config. The worker name in autopilot
 mode is derived automatically from your **Cloudflare account name** (never a
 `vpn` label) — you don't have to think about it.
+
+**Multi-account** — you can register several Cloudflare accounts and switch
+between them. Each account keeps its own API token, so switching the active
+account also switches credentials:
+
+```bash
+# Register one or more accounts (verifies the token, remembers each account)
+khvarenah cli accounts --add $CF_TOKEN_A
+khvarenah cli accounts --add $CF_TOKEN_B
+
+# List saved accounts (★ = active, 🔑 = has its own token)
+khvarenah cli accounts
+
+# Switch the active account — all commands now use it and its token
+khvarenah cli accounts --set <account-id>
+
+# Show daily request usage for the active account's workers
+khvarenah cli usage
+```
 
 **Examples**
 

@@ -153,6 +153,16 @@ def get_token(label: str = "default") -> Optional[str]:
     return t.get("token") if isinstance(t, dict) else None
 
 
+def get_account_token(account_id: str) -> Optional[str]:
+    """Return the token saved for this account, falling back to 'default'."""
+    if account_id:
+        t = stored_tokens().get(account_id)
+        if isinstance(t, dict) and t.get("token"):
+            return t["token"]
+    d = stored_tokens().get("default")
+    return d.get("token") if isinstance(d, dict) else None
+
+
 def clear_tokens() -> None:
     with _lock:
         _write_json(TOKENS_FILE, {}, private=True)

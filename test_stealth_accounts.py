@@ -175,3 +175,49 @@ def test_usage_error_returns_2(tmp_path, monkeypatch):
     monkeypatch.setattr("khvarenah.cli.Config", lambda *a, **k: _ErrAPI())
     args = build_parser().parse_args(["usage"])
     assert cmd_usage(args) == 2
+
+
+# ---------------------------------------------------------------------------
+# per-account token resolution
+# ---------------------------------------------------------------------------
+
+def test_get_account_token_falls_back_to_default(tmp_path, monkeypatch):
+    _patch_mem(tmp_path, monkeypatch)
+    store.remember_account("acc-1", "Alpha")
+    store.save_token("tok-default", "default")
+    # no per-account token -> falls back to default
+    assert store.get_account_token("acc-1") == "tok-default"
+
+
+def test_get_account_token_prefers_per_account(tmp_path, monkeypatch):
+    _patch_mem(tmp_path, monkeypatch)
+    store.remember_account("acc-1", "Alpha")
+    store.save_token("tok-default", "default")
+    store.save_token("tok-alpha", "acc-1")
+    assert store.get_account_token("acc-1") == "tok-alpha"
+    # default still intact for other accounts
+    assert store.get_account_token("acc-999") == "tok-default"
+
+
+class _AddTok:
+    def __init__(self, token):
+        self.token = token
+        self.accounts = [{"id": "acc-new", "name": "NewCo"}]
+
+    def verify_token(self):
+        return {"success": True}
+
+    def list_accounts(self):
+        return self.accounts
+
+
+def test_accounts_add_verifies_and_switches(tmp_path, monkeypatch, capsys):
+    _patch_mem(tmp_path, monkeypatch)
+    monkeypatch.setattr("khvarenah.cli._token", lambda _: "tok-new")
+    monkeypatch.setattr("khvarenah.cli.Config", lambda *a, **k: _AddTok("tok-new"))
+    args = build_parser().parse_args(["accounts", "--add", "tok-new"])
+    assert cmd_accounts(args) == 0
+    assert store.active_account() == "acc-new"
+    assert store.get_account_token("acc-new") == "tok-new"
+    out = capsys.readouterr().out
+    assert "NewCo" in out
