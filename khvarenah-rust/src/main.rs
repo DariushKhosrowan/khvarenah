@@ -6,6 +6,7 @@
 
 mod cf_api;
 mod cleanip;
+mod gui;
 mod stealth;
 mod store;
 mod updater;
@@ -36,6 +37,8 @@ struct Cli {
 enum Command {
     /// Manage profiles
     Profile(ProfileArgs),
+    /// Launch the desktop GUI (eframe)
+    Gui,
     /// Verify token + worker bundle
     Check(CommonArgs),
     /// Deploy worker + set UUID
@@ -203,6 +206,7 @@ fn main() {
 
     let result = match &cli.command {
         Command::Profile(a) => run_profile(a),
+        Command::Gui => run_gui(),
         Command::Check(a) => run_check(a),
         Command::Deploy(a) => run_deploy(a),
         Command::Config(a) => run_config(a),
@@ -220,6 +224,24 @@ fn main() {
         eprintln!("[error] {e}");
         std::process::exit(1);
     }
+}
+
+fn run_gui() -> Result<()> {
+    // Change into the profile store so the GUI sees the same data as the CLI.
+    let profile = store::active_profile();
+    let _ = store::ensure_profile(&profile);
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1280.0, 800.0])
+            .with_title("Khvarenah"),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Khvarenah",
+        options,
+        Box::new(|cc| Ok(Box::new(gui::KhvarenahApp::new(cc)))),
+    )
+    .map_err(|e| anyhow!("GUI error: {e}"))
 }
 
 fn run_profile(a: &ProfileArgs) -> Result<()> {
