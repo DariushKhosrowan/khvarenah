@@ -4,9 +4,11 @@
 //! tokens, accounts, generated configs, and clean IPs live per-profile, are
 //! never cleared by updates, and are fully loadable.
 
+mod autopilot;
 mod cf_api;
 mod cleanip;
 mod gui;
+mod slipnet;
 mod stealth;
 mod store;
 mod updater;
@@ -53,6 +55,11 @@ enum Command {
     Clean(CommonArgs),
     /// Deploy then find a clean IP (full auto)
     Autopilot(CommonArgs),
+    /// Autopilot control: start/stop/status/monitor
+    AutopilotCtl(AutopilotCtlArgs),
+    /// Advanced: SlipNet DNS-resolver scanner (install / scan / countries)
+    #[command(name = "slipnet")]
+    SlipNet(SlipNetArgs),
     /// Show daily request usage for the active account
     Usage(CommonArgs),
     /// List saved vless configs and tokens
@@ -166,11 +173,85 @@ struct CommonArgs {
     verbose: bool,
 }
 
+impl Default for CommonArgs {
+    fn default() -> Self {
+        Self {
+            token: None,
+            account: None,
+            worker: None,
+            name: None,
+            uuid: None,
+            address: None,
+            port: 443,
+            security: "tls".to_string(),
+            path: "/".to_string(),
+            count: 2000,
+            workers: 25,
+            timeout: 8,
+            top: 1,
+            all: false,
+            more: None,
+            ports: "443".to_string(),
+            gentle: true,
+            scan_timeout: 600,
+            compat_date: cf_api::DEFAULT_COMPAT_DATE.to_string(),
+            verbose: false,
+        }
+    }
+}
+
 #[derive(clap::Args)]
 struct HistoryArgs {
     /// Reveal stored API tokens
     #[arg(long)]
     show_tokens: bool,
+}
+
+#[derive(clap::Args)]
+struct AutopilotCtlArgs {
+    #[command(subcommand)]
+    action: AutopilotCtlAction,
+}
+
+#[derive(clap::Args)]
+struct SlipNetArgs {
+    #[command(subcommand)]
+    action: SlipNetAction,
+}
+
+#[derive(clap::Parser)]
+enum SlipNetAction {
+    /// Download the SlipNet CLI binary (v2.5.3).
+    Install,
+    /// Show supported country filters for resolver scans.
+    Countries,
+    /// Run a DNS-resolver scan.
+    #[command(name = "scan")]
+    Scan {
+        /// DNS-tunnel zone (e.g. t.example.com).
+        #[arg(long)]
+        domain: String,
+        /// Country filter: ir, ru, cn, us, de, tr …
+        #[arg(long)]
+        country: Option<String>,
+        /// File of resolver IPs (one per line).
+        #[arg(long)]
+        ips: Option<String>,
+    },
+}
+
+#[derive(clap::Parser)]
+enum AutopilotCtlAction {
+    /// Deploy (if needed), find the best clean IP, export the working config,
+    /// and keep running: re-verify every interval and swap in fresh clean IPs
+    /// when the active one degrades.
+    Start(CommonArgs),
+    /// Mark autopilot as off for this profile (no background process).
+    Stop,
+    /// Show the current autopilot state.
+    Status,
+    /// Run a single monitor tick (mainly for the GUI).
+    Tick(CommonArgs),
 }
 
 #[derive(clap::Args)]
@@ -214,6 +295,8 @@ fn main() {
         Command::Scan(a) => run_scan(a, false),
         Command::Clean(a) => run_scan(a, true),
         Command::Autopilot(a) => run_autopilot(a),
+        Command::AutopilotCtl(a) => run_autopilot_ctl(a),
+        Command::SlipNet(a) => run_slipnet(a),
         Command::Usage(a) => run_usage(a),
         Command::History(h) => run_history(h),
         Command::Accounts(a) => run_accounts(a),
@@ -700,6 +783,88 @@ fn run_autopilot(args: &CommonArgs) -> Result<()> {
     cln.name = Some(name);
     cln.uuid = Some(uuid);
     run_scan(&cln, true)
+}
+
+fn run_autopilot_ctl(a: &AutopilotCtlArgs) -> Result<()> {
+    let profile = resolve_token_profile();
+    store::ensure_profile(&profile)?;
+    match &a.action {
+        AutopilotCtlAction::Start(args) => {
+            println!("Autopilot: starting for profile '{profile}' …");
+            let st = autopilot::run_once(&profile, args)?;
+            print_autopilot_status(&st);
+            // Then enter the blocking monitor loop.
+            autopilot::monitor_loop(&profile, args)
+        }
+        AutopilotCtlAction::Stop => {
+            let mut st = store::autopilot_state(&profile);
+            st.enabled = false;
+            st.running = false;
+            st.status = "Autopilot stopped by user.".to_string();
+            store::save_autopilot_state(&profile, &st)?;
+            println!("Autopilot stopped for profile '{profile}'.");
+            Ok(())
+        }
+        AutopilotCtlAction::Status => {
+            let st = store::autopilot_state(&profile);
+            print_autopilot_status(&st);
+            Ok(())
+        }
+        AutopilotCtlAction::Tick(args) => {
+            let st = autopilot::monitor_tick(&profile, args)?;
+            print_autopilot_status(&st);
+            Ok(())
+        }
+    }
+}
+
+fn print_autopilot_status(st: &store::AutopilotState) {
+    println!("──────────────────────────────────────────────");
+    println!("  Autopilot (profile): {}", store::active_profile());
+    println!("  Enabled: {}", if st.enabled { "yes" } else { "no" });
+    println!("  Running: {}", if st.running { "yes" } else { "no" });
+    println!("  Interval: {} min", st.interval_minutes);
+    if !st.current_endpoint.is_empty() {
+        println!("  Active clean IP: {}", st.current_endpoint);
+    }
+    if !st.worker_name.is_empty() {
+        println!("  Worker: {}", st.worker_name);
+    }
+    println!("  Status: {}", st.status);
+    println!("──────────────────────────────────────────────");
+}
+
+fn run_slipnet(a: &SlipNetArgs) -> Result<()> {
+    match &a.action {
+        SlipNetAction::Install => {
+            let msg = slipnet::install()?;
+            println!("{msg}");
+            println!("Usage: khvarenah slipnet scan --domain <zone> --country ir");
+            Ok(())
+        }
+        SlipNetAction::Countries => {
+            println!("SlipNet DNS-scan country filters:");
+            for (code, name) in slipnet::COUNTRIES {
+                println!("  {code:<4} {name}");
+            }
+            Ok(())
+        }
+        SlipNetAction::Scan { domain, country, ips } => {
+            let country = country.as_deref().unwrap_or("");
+            if country.is_empty() && ips.is_none() {
+                return Err(anyhow!(
+                    "slipnet scan needs --country <code> (or --ips <file>). Use 'khvarenah slipnet countries'."
+                ));
+            }
+            if !country.is_empty() && slipnet::country_range(country).is_none() {
+                return Err(anyhow!("Unknown country '{country}'. Run 'khvarenah slipnet countries'."));
+            }
+            println!("SlipNet DNS scan: domain={domain} country={country} ips={}", ips.as_deref().unwrap_or("-"));
+            let out = slipnet::dns_scan(domain, country, ips.as_deref())?;
+            println!("{out}");
+            Ok(())
+        }
+    }
 }
 
 fn run_usage(args: &CommonArgs) -> Result<()> {

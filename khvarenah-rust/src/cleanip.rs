@@ -19,6 +19,7 @@ pub const RELEASE: &str = "v1.1.1";
 /// Smart stop-on-first-working default: aim for exactly ONE verified working
 /// endpoint before stopping. Raise it (--more N / --all) only when the user
 /// explicitly asks for more configs.
+#[allow(dead_code)]
 pub const DEFAULT_TARGET_TOP: u32 = 1;
 
 pub fn bin_dir() -> PathBuf {

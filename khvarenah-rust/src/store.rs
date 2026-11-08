@@ -658,6 +658,67 @@ pub fn save_clean_configs(profile: &str, lines: &[String]) -> Result<()> {
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Autopilot / monitoring state
+// ---------------------------------------------------------------------------
+
+/// How often the autopilot monitor re-verifies the active clean IP and
+/// re-scans when it degrades.
+pub const DEFAULT_AUTOPILOT_INTERVAL_MINUTES: u32 = 10;
+
+/// Persisted autopilot monitor state (per profile).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct AutopilotState {
+    /// Whether autopilot is currently enabled for this profile.
+    pub enabled: bool,
+    /// Re-check interval in minutes.
+    pub interval_minutes: u32,
+    /// Epoch of the last completed monitor cycle.
+    pub last_check_epoch: f64,
+    /// Epoch of the next scheduled check (0 when not running).
+    pub next_check_epoch: f64,
+    /// The currently-active clean endpoint "ip:port" being served.
+    pub current_endpoint: String,
+    /// The deployed worker name (so the monitor can re-deploy if missing).
+    pub worker_name: String,
+    /// The UUID used for the served vless config.
+    pub uuid: String,
+    /// Human-readable monitor status line.
+    pub status: String,
+    /// Whether a monitor loop is currently running (GUI/CLI).
+    pub running: bool,
+}
+
+impl Default for AutopilotState {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            interval_minutes: DEFAULT_AUTOPILOT_INTERVAL_MINUTES,
+            last_check_epoch: 0.0,
+            next_check_epoch: 0.0,
+            current_endpoint: String::new(),
+            worker_name: String::new(),
+            uuid: String::new(),
+            status: "Autopilot is off.".to_string(),
+            running: false,
+        }
+    }
+}
+
+pub fn autopilot_file(profile: &str) -> PathBuf {
+    profile_file(profile, "autopilot.json")
+}
+
+pub fn autopilot_state(profile: &str) -> AutopilotState {
+    read_json(&autopilot_file(profile), AutopilotState::default())
+}
+
+pub fn save_autopilot_state(profile: &str, s: &AutopilotState) -> Result<()> {
+    create_profile(profile)?;
+    write_json(&autopilot_file(profile), s, false, true)
+}
+
 #[allow(dead_code)]
 pub fn load_clean_ips(profile: &str) -> Vec<String> {
     let p = clean_ips_file(profile);
@@ -806,6 +867,28 @@ mod tests {
             let v = list_vless("p", 10);
             assert_eq!(v[0].address, "h2.workers.dev");
             assert_eq!(v[2].address, "h0.workers.dev");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn autopilot_state_roundtrips() {
+        with_home("autopi", || {
+            create_profile("default")?;
+            let s = autopilot_state("default");
+            assert!(!s.enabled);
+            assert_eq!(s.interval_minutes, DEFAULT_AUTOPILOT_INTERVAL_MINUTES);
+            let mut s = s;
+            s.enabled = true;
+            s.current_endpoint = "1.2.3.4:443".to_string();
+            s.worker_name = "cf-worker".to_string();
+            s.status = "Active".to_string();
+            save_autopilot_state("default", &s)?;
+            let got = autopilot_state("default");
+            assert!(got.enabled);
+            assert_eq!(got.current_endpoint, "1.2.3.4:443");
+            assert_eq!(got.worker_name, "cf-worker");
+            assert_eq!(got.status, "Active");
             Ok(())
         });
     }
