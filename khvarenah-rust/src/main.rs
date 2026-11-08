@@ -167,6 +167,10 @@ struct CommonArgs {
     #[arg(long, default_value = "native")]
     backend: String,
 
+    /// Do not start the monitor loop after `go` completes.
+    #[arg(long)]
+    no_monitor: bool,
+
     /// Gentle mode (human-friendly scanning)
     #[arg(long, default_value_t = true)]
     gentle: bool,
@@ -204,6 +208,7 @@ impl Default for CommonArgs {
             more: None,
             ports: "443".to_string(),
             backend: "native".to_string(),
+            no_monitor: false,
             gentle: true,
             scan_timeout: 600,
             compat_date: cf_api::DEFAULT_COMPAT_DATE.to_string(),
@@ -721,13 +726,20 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
 
         // Best first
         let (best_ep, best_link) = &configs[0];
-        println!("\n✓ Best clean IP: {best_ep}");
+        let best_rtt = rtt_for(&result, best_ep);
+        match best_rtt {
+            Some(ms) => println!("\n✓ Best clean IP: {best_ep} ({ms}ms)"),
+            None => println!("\n✓ Best clean IP: {best_ep}"),
+        }
         println!("  Working vless link:\n    {best_link}");
 
         if configs.len() > 1 {
             println!("\nMore clean IPs ({} total):", configs.len());
             for (ep, link) in &configs[1..] {
-                println!("  • {ep}\n    {link}");
+                match rtt_for(&result, ep) {
+                    Some(ms) => println!("  • {ep} ({ms}ms)\n    {link}"),
+                    None => println!("  • {ep}\n    {link}"),
+                }
             }
         }
 
@@ -736,7 +748,12 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
         store::save_clean_ips(&profile, &ep_list)?;
         let cfg_lines: Vec<String> = configs
             .iter()
-            .map(|(ep, link)| format!("# {ep}\n{link}"))
+            .map(|(ep, link)| {
+                match rtt_for(&result, ep) {
+                    Some(ms) => format!("# {ep} ({ms}ms)\n{link}"),
+                    None => format!("# {ep}\n{link}"),
+                }
+            })
             .collect();
         store::save_clean_configs(&profile, &cfg_lines)?;
         println!(
@@ -777,6 +794,12 @@ fn split_endpoint(ep: &str) -> (String, u16) {
         }
         None => (ep.to_string(), 443),
     }
+}
+
+/// Look up the measured RTT (ms) for an endpoint from a scan result's ranked
+/// list. Returns `None` when the backend didn't report per-IP latency (senpai).
+fn rtt_for(result: &cleanip::CleanIpResult, ep: &str) -> Option<u32> {
+    result.ranked.iter().find(|(e, _)| e == ep).map(|(_, rtt)| *rtt)
 }
 
 fn run_autopilot(args: &CommonArgs) -> Result<()> {
@@ -964,7 +987,10 @@ fn run_go(args: &CommonArgs) -> Result<()> {
             link: working_link.clone(),
             note: format!("worker={name} host={host}"),
         });
-        configs.push(format!("# {ep}\n{working_link}"));
+        match rtt_for(&result, ep) {
+            Some(ms) => configs.push(format!("# {ep} ({ms}ms)\n{working_link}")),
+            None => configs.push(format!("# {ep}\n{working_link}")),
+        }
     }
 
     // 5. Persist clean IPs + configs.
@@ -977,16 +1003,24 @@ fn run_go(args: &CommonArgs) -> Result<()> {
 
     // 6. Best endpoint = lowest RTT verified (first after sort).
     let best = result.endpoints[0].clone();
-    let best_rtt = cfg.timeout_ms; // diagnostic; reported below
-    println!(
-        "✓ Protection active. Best: {best} (<{best_rtt}ms). Config: {}. {} fallbacks saved.",
-        store::clean_configs_file(&profile).display(),
-        ep_list.len().saturating_sub(1)
-    );
+    match rtt_for(&result, &best) {
+        Some(ms) => println!(
+            "✓ Protection active. Best: {best} ({ms}ms). Config: {}. {} fallbacks saved.",
+            store::clean_configs_file(&profile).display(),
+            ep_list.len().saturating_sub(1)
+        ),
+        None => println!(
+            "✓ Protection active. Best: {best}. Config: {}. {} fallbacks saved.",
+            store::clean_configs_file(&profile).display(),
+            ep_list.len().saturating_sub(1)
+        ),
+    }
 
     // 7. Start the monitor (unless --no-monitor).
-    let monitor = !args.verbose || true; // always monitor by default
-    let _ = monitor;
+    if args.no_monitor {
+        println!("Monitor skipped (--no-monitor). Configs are ready to use.");
+        return Ok(());
+    }
     println!("Starting monitor (Ctrl-C to stop)…");
     autopilot::monitor_loop(&profile, args)
 }

@@ -149,6 +149,9 @@ pub fn ensure_installed() -> Result<PathBuf> {
 #[derive(Debug, Clone)]
 pub struct CleanIpResult {
     pub endpoints: Vec<String>,
+    /// Ranked verified candidates: `(endpoint, rtt_ms)`, best first. Empty for
+    /// the legacy senpai backend (which doesn't report per-IP latency).
+    pub ranked: Vec<(String, u32)>,
     #[allow(dead_code)]
     pub raw: String,
     pub message: String,
@@ -250,12 +253,15 @@ pub fn find_clean_ips_native(
 
     let candidates = native_scan::scan_full(cfg, cancel, Some(progress), worker_host)?;
 
-    // Keep only verified (HttpOk) endpoints — these are what we export.
-    let endpoints: Vec<String> = candidates
-        .iter()
-        .filter(|c| c.stage == ProbeStage::HttpOk)
-        .map(|c| format!("{}:{}", c.ip, c.port))
-        .collect();
+    // Keep only verified (HttpOk) endpoints — these are what we export. Also
+    // keep the ranked (endpoint, rtt_ms) list while we have the candidates.
+    let mut endpoints: Vec<String> = Vec::new();
+    let mut ranked: Vec<(String, u32)> = Vec::new();
+    for c in candidates.iter().filter(|c| c.stage == ProbeStage::HttpOk) {
+        let ep = format!("{}:{}", c.ip, c.port);
+        endpoints.push(ep.clone());
+        ranked.push((ep, c.rtt_ms));
+    }
 
     if endpoints.is_empty() {
         // Give the caller a useful message distinguishing "no candidates" from
@@ -271,6 +277,7 @@ pub fn find_clean_ips_native(
     let found = endpoints.len();
     Ok(CleanIpResult {
         endpoints,
+        ranked,
         raw: String::new(),
         message: format!("Found {found} verified clean endpoint(s) via native scanner."),
     })
@@ -336,6 +343,7 @@ pub fn find_clean_ips(
     let count = endpoints.len();
     Ok(CleanIpResult {
         endpoints,
+        ranked: Vec::new(),
         raw: stdout,
         message: format!("Found {} clean endpoint(s).", count),
     })
