@@ -60,40 +60,46 @@ pub fn run_once(profile: &str, args: &crate::CommonArgs) -> Result<AutopilotStat
     let prof = crate::build_profile(profile, args, &c, &acc_id);
     let link = prof.share_link();
 
-    // 3. Find clean IPs (SlipNet / SenPaiScanner backends).
+    // 3. Find clean IPs (native scanner by default; senpai fallback).
     st.status = "Scanning for clean IPs…".to_string();
     store::save_autopilot_state(profile, &st)?;
     let top = u32::max(store::settings(profile).clean_top.max(1), 1);
-    let result = cleanip::find_clean_ips(
-        &link,
-        args.count,
-        args.workers,
-        args.timeout,
-        args.gentle,
-        &args.ports,
-        args.scan_timeout,
-        top,
-    )?;
+    let result = if cleanip::Backend::parse(&args.backend) == cleanip::Backend::Native {
+        let cfg = cleanip::native_config_from_args(args.count, args.workers, args.timeout, top, &args.ports);
+        cleanip::find_clean_ips_native(&prof.address, &cfg)?
+    } else {
+        cleanip::find_clean_ips(
+            &link,
+            args.count,
+            args.workers,
+            args.timeout,
+            args.gentle,
+            &args.ports,
+            args.scan_timeout,
+            top,
+        )?
+    };
 
-    // 4. Verify each candidate and keep the first verified working one.
-    let verify_tls = prof.security == "tls";
-    let mut best: Option<(String, String)> = None;
-    for ep in &result.endpoints {
-        if !cleanip::endpoint_reachable(ep, args.timeout.into(), verify_tls) {
-            continue;
-        }
-        let working_link = vless::rewrite_vless_with_endpoint(&link, ep);
-        best = Some((ep.clone(), working_link));
-        break;
-    }
-
-    let (best_ep, best_link) = best.ok_or_else(|| {
+    // 4. The native scanner already verified candidates and sorted best-first
+    //    (highest score, then lowest RTT). Pick the best and export ALL verified
+    //    configs as fallbacks.
+    let best_ep = result.endpoints.first().cloned().ok_or_else(|| {
         anyhow!(
             "Scanner found endpoints but none passed the health check. Try a larger --count or longer --timeout."
         )
     })?;
+    let best_link = vless::rewrite_vless_with_endpoint(&link, &best_ep);
 
-    // 5. Persist the working config + clean IP list.
+    // Build a config line for every verified endpoint (fallback pool).
+    let mut cfg_lines: Vec<String> = Vec::new();
+    let mut ep_list: Vec<String> = Vec::new();
+    for ep in &result.endpoints {
+        ep_list.push(ep.clone());
+        let working_link = vless::rewrite_vless_with_endpoint(&link, ep);
+        cfg_lines.push(format!("# {ep}\n{working_link}"));
+    }
+
+    // 5. Persist the best record + full clean IP/config list.
     let (ip, port) = crate::split_endpoint(&best_ep);
     let rec = store::VlessRecord {
         id: uuid::Uuid::new_v4().to_string(),
@@ -108,14 +114,14 @@ pub fn run_once(profile: &str, args: &crate::CommonArgs) -> Result<AutopilotStat
         note: format!("worker={name} host={}", prof.address),
     };
     let _ = store::remember_vless(profile, &rec);
-    store::save_clean_ips(profile, &result.endpoints)?;
-    store::save_clean_configs(profile, &[format!("# {best_ep}\n{best_link}")])?;
+    store::save_clean_ips(profile, &ep_list)?;
+    store::save_clean_configs(profile, &cfg_lines)?;
 
     st.enabled = true;
     st.worker_name = name;
     st.uuid = uuid;
     st.current_endpoint = best_ep.clone();
-    st.status = format!("Active: {best_ep} — config exported.");
+    st.status = format!("Active: {best_ep} — {} config(s) exported.", cfg_lines.len());
     st.last_check_epoch = store::now_epoch();
     st.next_check_epoch = store::now_epoch() + (st.interval_minutes as f64) * 60.0;
     store::save_autopilot_state(profile, &st)?;
@@ -124,7 +130,10 @@ pub fn run_once(profile: &str, args: &crate::CommonArgs) -> Result<AutopilotStat
 }
 
 /// A single monitor tick: verify the current endpoint; if it is no longer
-/// reachable, re-scan and swap in a fresh one.
+/// reachable, first try a fallback from the saved clean-configs pool, and only
+/// if none pass, re-scan and swap in a fresh one. Implements the policy chain:
+/// verify → on fail retry after 30s → on second fail try fallbacks → else fresh
+/// scan. (A full, persistent monitor loop is `monitor_loop`.)
 pub fn monitor_tick(profile: &str, args: &crate::CommonArgs) -> Result<AutopilotState> {
     let st = store::autopilot_state(profile);
     if !st.enabled {
@@ -147,13 +156,34 @@ pub fn monitor_tick(profile: &str, args: &crate::CommonArgs) -> Result<Autopilot
         return Ok(st);
     }
 
-    // Endpoint degraded → re-scan for a fresh one.
+    // Endpoint degraded → first try a fallback from the saved pool (excluding the
+    // current endpoint), then fall back to a fresh scan.
+    let fallbacks = store::load_clean_ips(profile);
+    let mut chosen: Option<String> = None;
+    for ep in fallbacks {
+        if ep == st.current_endpoint {
+            continue;
+        }
+        if cleanip::endpoint_reachable(&ep, 5, verify_tls) {
+            chosen = Some(ep);
+            break;
+        }
+    }
+
+    if let Some(ep) = chosen {
+        let mut st = st.clone();
+        st.status = format!("{} unreachable — swapped to fallback {ep}.", st.current_endpoint);
+        st.current_endpoint = ep.clone();
+        st.last_check_epoch = store::now_epoch();
+        st.next_check_epoch = store::now_epoch() + (st.interval_minutes as f64) * 60.0;
+        store::save_autopilot_state(profile, &st)?;
+        return Ok(st);
+    }
+
+    // No fallback passed → re-scan for a fresh batch.
     if !st.current_endpoint.is_empty() {
         let mut st = st.clone();
-        st.status = format!(
-            "{} unreachable — re-scanning…",
-            st.current_endpoint
-        );
+        st.status = format!("{} unreachable — re-scanning…", st.current_endpoint);
         store::save_autopilot_state(profile, &st)?;
     }
     run_once(profile, args)

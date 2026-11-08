@@ -8,11 +8,78 @@
 //! found. It only keeps going to find more when the caller explicitly asks
 //! (`--more N` / `--all`).
 
+// Clean-IP finding — backend dispatch.
+//
+// Two backends:
+// - **Native** (default): `crate::native_scan` — a self-contained Rust scanner
+//   that samples Cloudflare IPv4 ranges, TCP-probes concurrently, then verifies
+//   survivors through the deployed worker (TLS + HTTP trace). No external
+//   binary. This is the backend autopilot and the `go` command use.
+// - **Senpai** (legacy): the external SenPaiScanner Go binary (kept for
+//   backwards-compat / debugging).
+
+use crate::native_scan::{self, ProbeStage, ScanConfig};
 use anyhow::{anyhow, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+/// Which clean-IP scanner to use.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    Native,
+    Senpai,
+}
+
+impl Backend {
+    pub fn parse(s: &str) -> Backend {
+        match s.to_ascii_lowercase().as_str() {
+            "senpai" | "senpaiscanner" => Backend::Senpai,
+            _ => Backend::Native,
+        }
+    }
+}
+
+/// Build a `ScanConfig` from the CLI args (count/workers/timeout/top/ports).
+pub fn native_config_from_args(
+    count: u32,
+    workers: u32,
+    timeout_s: u32,
+    top: u32,
+    ports: &str,
+) -> ScanConfig {
+    let ports = parse_ports(ports);
+    ScanConfig {
+        ports,
+        workers: (workers.max(1)) as usize,
+        timeout_ms: 1000 * (timeout_s.max(1)) as u64,
+        target_top: (top.max(1)) as usize,
+        max_total: (count.max(1)) as usize,
+        ..ScanConfig::default()
+    }
+}
+
+/// Parse a comma-separated port list into `Vec<u16>`.
+pub fn parse_ports(ports: &str) -> Vec<u16> {
+    ports
+        .split(',')
+        .filter_map(|p| p.trim().parse::<u16>().ok())
+        .filter(|p| *p > 0)
+        .collect::<Vec<u16>>()
+        .pipe_if_empty(vec![443, 2053, 8443])
+}
+
+trait PipeIfEmpty {
+    fn pipe_if_empty(self, fallback: Vec<u16>) -> Vec<u16>;
+}
+impl PipeIfEmpty for Vec<u16> {
+    fn pipe_if_empty(self, fallback: Vec<u16>) -> Vec<u16> {
+        if self.is_empty() { fallback } else { self }
+    }
+}
 
 pub const RELEASE: &str = "v1.1.1";
 
@@ -164,6 +231,49 @@ fn collect_endpoints(live_glob_dirs: &[PathBuf], out_file: Option<&Path>, stdout
     }
 
     seen
+}
+
+
+/// Native clean-IP scanner entry point. Runs the self-contained Rust scanner
+/// (`native_scan::scan_full`) and converts results into the common
+/// `CleanIpResult` shape. `worker_host` is the deployed worker hostname used
+/// for the authoritative HTTP-trace verification.
+pub fn find_clean_ips_native(
+    worker_host: &str,
+    cfg: &ScanConfig,
+) -> Result<CleanIpResult> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let progress = Arc::new(|scanned: u32, total: u32| {
+        eprint!("\r  scan: {scanned}/{total}");
+        let _ = std::io::Write::flush(&mut std::io::stderr());
+    }) as Arc<dyn Fn(u32, u32) + Send + Sync>;
+
+    let candidates = native_scan::scan_full(cfg, cancel, Some(progress), worker_host)?;
+
+    // Keep only verified (HttpOk) endpoints — these are what we export.
+    let endpoints: Vec<String> = candidates
+        .iter()
+        .filter(|c| c.stage == ProbeStage::HttpOk)
+        .map(|c| format!("{}:{}", c.ip, c.port))
+        .collect();
+
+    if endpoints.is_empty() {
+        // Give the caller a useful message distinguishing "no candidates" from
+        // "candidates but nothing verified".
+        let n_tcp = candidates.iter().filter(|c| c.stage == ProbeStage::TcpOk).count();
+        let n_tls = candidates.iter().filter(|c| c.stage == ProbeStage::TlsOk).count();
+        let msg = format!(
+            "Native scan found no verified clean IPs (tcp={n_tcp}, tls={n_tls}). Try a larger --count, longer --timeout, or the senpai backend."
+        );
+        return Err(anyhow!(msg));
+    }
+
+    let found = endpoints.len();
+    Ok(CleanIpResult {
+        endpoints,
+        raw: String::new(),
+        message: format!("Found {found} verified clean endpoint(s) via native scanner."),
+    })
 }
 
 /// Run SenPaiScanner against a vless link, returning clean endpoints.

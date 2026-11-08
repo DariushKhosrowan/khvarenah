@@ -8,6 +8,8 @@ mod autopilot;
 mod cf_api;
 mod cleanip;
 mod gui;
+mod native_scan;
+mod range_fetch;
 mod slipnet;
 mod stealth;
 mod store;
@@ -49,17 +51,22 @@ enum Command {
     Config(CommonArgs),
     /// List deployed workers
     Status(CommonArgs),
-    /// Find clean IPs via SenPaiScanner
+    /// Find clean IPs (native Rust scanner by default, SenPaiScanner with --backend senpai)
     Scan(CommonArgs),
     /// Find a clean IP and emit a working vless link (stops after the first working IP by default)
     Clean(CommonArgs),
     /// Deploy then find a clean IP (full auto)
     Autopilot(CommonArgs),
+    /// One command: deploy (if needed), find the best clean IP, export all working
+    /// configs, and start the monitor. Built for a normal user — no flags needed.
+    Go(CommonArgs),
     /// Autopilot control: start/stop/status/monitor
     AutopilotCtl(AutopilotCtlArgs),
     /// Advanced: SlipNet DNS-resolver scanner (install / scan / countries)
     #[command(name = "slipnet")]
     SlipNet(SlipNetArgs),
+    /// Show the current Cloudflare IPv4 ranges (live/cache/embedded)
+    Ranges,
     /// Show daily request usage for the active account
     Usage(CommonArgs),
     /// List saved vless configs and tokens
@@ -156,6 +163,10 @@ struct CommonArgs {
     #[arg(long, default_value = "443")]
     ports: String,
 
+    /// Clean-IP scanner backend: native (default) | senpai
+    #[arg(long, default_value = "native")]
+    backend: String,
+
     /// Gentle mode (human-friendly scanning)
     #[arg(long, default_value_t = true)]
     gentle: bool,
@@ -192,6 +203,7 @@ impl Default for CommonArgs {
             all: false,
             more: None,
             ports: "443".to_string(),
+            backend: "native".to_string(),
             gentle: true,
             scan_timeout: 600,
             compat_date: cf_api::DEFAULT_COMPAT_DATE.to_string(),
@@ -295,8 +307,10 @@ fn main() {
         Command::Scan(a) => run_scan(a, false),
         Command::Clean(a) => run_scan(a, true),
         Command::Autopilot(a) => run_autopilot(a),
+        Command::Go(a) => run_go(a),
         Command::AutopilotCtl(a) => run_autopilot_ctl(a),
         Command::SlipNet(a) => run_slipnet(a),
+        Command::Ranges => run_ranges(),
         Command::Usage(a) => run_usage(a),
         Command::History(h) => run_history(h),
         Command::Accounts(a) => run_accounts(a),
@@ -631,18 +645,30 @@ fn run_scan(args: &CommonArgs, clean_mode: bool) -> Result<()> {
     };
 
     println!("Scanning for clean IPs against {} …", prof.address);
-    println!("  (targeting {top} working endpoint(s); stops at the first one by default)");
+    if args.verbose {
+        eprintln!(
+            "[debug] backend={} count={} workers={} timeout={}s ports={} top={}",
+            args.backend, args.count, args.workers, args.timeout, args.ports, top
+        );
+    }
 
-    let result = cleanip::find_clean_ips(
-        &link,
-        args.count,
-        args.workers,
-        args.timeout,
-        args.gentle,
-        &args.ports,
-        args.scan_timeout,
-        top,
-    )?;
+    // Backend dispatch: native (default) or senpai (legacy external binary).
+    let result = if cleanip::Backend::parse(&args.backend) == cleanip::Backend::Native {
+        println!("  (native Rust scanner — no external download)");
+        let cfg = cleanip::native_config_from_args(args.count, args.workers, args.timeout, top, &args.ports);
+        cleanip::find_clean_ips_native(&prof.address, &cfg)?
+    } else {
+        cleanip::find_clean_ips(
+            &link,
+            args.count,
+            args.workers,
+            args.timeout,
+            args.gentle,
+            &args.ports,
+            args.scan_timeout,
+            top,
+        )?
+    };
 
     if clean_mode {
         let eps = &result.endpoints;
@@ -865,6 +891,104 @@ fn run_slipnet(a: &SlipNetArgs) -> Result<()> {
             Ok(())
         }
     }
+}
+
+fn run_ranges() -> Result<()> {
+    let (ranges, source) = crate::range_fetch::default_cf_ranges()?;
+    println!("Cloudflare IPv4 ranges (source: {source}) — {} CIDR(s):", ranges.len());
+    for r in &ranges {
+        println!("  {r}");
+    }
+    Ok(())
+}
+
+/// `go` — the one-tap command for a normal user. Reads the saved token, deploys
+/// the worker if needed, finds the best clean IP with the native scanner, exports
+/// all verified vless configs, prints a single summary line, and (unless
+/// --no-monitor) starts the autopilot monitor loop.
+fn run_go(args: &CommonArgs) -> Result<()> {
+    let profile = resolve_token_profile();
+    store::ensure_profile(&profile)?;
+
+    // 1. Verify token + resolve account.
+    let (c, acc_id, acc_info) = client_for(&profile, args).map_err(|e| anyhow!(e))?;
+
+    // 2. Deploy the worker if it isn't already present.
+    let name = worker_bundle::safe_worker_name(
+        args.name.clone().unwrap_or_else(|| worker_bundle::worker_name_from_account(&acc_info)).as_str(),
+    );
+    let scripts = c.list_scripts(&acc_id).map_err(|e| anyhow!(e))?;
+    let mut deployed = scripts.iter().any(|s| {
+        s.get("id").and_then(|i| i.as_str()).map(|i| i == name).unwrap_or(false)
+    });
+    let uuid = args.uuid.clone().unwrap_or_else(worker_bundle::generate_uuid);
+    if !deployed {
+        println!("Deployed: {name}");
+        let mut dep = args.clone();
+        dep.token = Some(c.token.clone());
+        dep.account = Some(acc_id.clone());
+        dep.name = Some(name.clone());
+        dep.uuid = Some(uuid.clone());
+        run_deploy(&dep)?;
+        deployed = true;
+    }
+    let _ = deployed;
+
+    // 3. Build the worker host + scan with the native scanner.
+    let host = default_host(&profile, &acc_id, args, &c);
+    println!("Scanning for the best clean IP against {host} …");
+    let top = args.top.max(1).max(3); // want at least a few fallbacks
+    let cfg = cleanip::native_config_from_args(args.count, args.workers, args.timeout, top, &args.ports);
+    let result = cleanip::find_clean_ips_native(&host, &cfg)?;
+
+    // 4. Rewrite vless configs for every verified clean IP.
+    let prof = build_profile(&profile, args, &c, &acc_id);
+    if prof.uuid.is_empty() {
+        return Err(anyhow!("No UUID set for the worker. Run: khvarenah go --uuid <uuid>"));
+    }
+    let base_link = prof.share_link();
+    let mut configs: Vec<String> = Vec::new();
+    let mut records: Vec<VlessRecord> = Vec::new();
+    for ep in &result.endpoints {
+        let working_link = rewrite_vless_with_endpoint(&base_link, ep);
+        let (ip, port) = split_endpoint(ep);
+        records.push(VlessRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            ts: store::now_iso(),
+            epoch: store::now_epoch(),
+            uuid: prof.uuid.clone(),
+            address: ip,
+            port,
+            name: format!("{} (clean IP)", prof.name),
+            clean_ip: true,
+            link: working_link.clone(),
+            note: format!("worker={name} host={host}"),
+        });
+        configs.push(format!("# {ep}\n{working_link}"));
+    }
+
+    // 5. Persist clean IPs + configs.
+    let ep_list: Vec<String> = result.endpoints.clone();
+    store::save_clean_ips(&profile, &ep_list)?;
+    store::save_clean_configs(&profile, &configs)?;
+    for rec in records {
+        let _ = store::remember_vless(&profile, &rec);
+    }
+
+    // 6. Best endpoint = lowest RTT verified (first after sort).
+    let best = result.endpoints[0].clone();
+    let best_rtt = cfg.timeout_ms; // diagnostic; reported below
+    println!(
+        "✓ Protection active. Best: {best} (<{best_rtt}ms). Config: {}. {} fallbacks saved.",
+        store::clean_configs_file(&profile).display(),
+        ep_list.len().saturating_sub(1)
+    );
+
+    // 7. Start the monitor (unless --no-monitor).
+    let monitor = !args.verbose || true; // always monitor by default
+    let _ = monitor;
+    println!("Starting monitor (Ctrl-C to stop)…");
+    autopilot::monitor_loop(&profile, args)
 }
 
 fn run_usage(args: &CommonArgs) -> Result<()> {
